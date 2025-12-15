@@ -372,8 +372,9 @@ export default function SettingsPage() {
       {isAuthenticated ? (
         <button
           onClick={signOut}
-          className="w-full py-3 bg-red-500/20 text-red-500 rounded border-2 border-red-500/50 font-mono font-bold"
+          className="w-full py-3 bg-red-500/20 text-red-500 rounded border-2 border-red-500/50 font-mono font-bold flex items-center justify-center gap-2"
         >
+          <span className="text-2xl leading-none -mt-1">☢</span>
           SIGN OUT
         </button>
       ) : (

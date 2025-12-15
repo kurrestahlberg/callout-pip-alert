@@ -109,7 +109,7 @@ export default function BootScreen({ onComplete }: BootScreenProps) {
           </div>
 
           {/* Boot text - all lines pre-rendered for stable layout */}
-          <div className="font-mono text-sm space-y-1 w-full max-w-md text-left">
+          <div className="font-mono text-sm w-full max-w-md text-left">
             {BOOT_LINES.map((fullLine, i) => {
               const typedText = displayedText[i] ?? "";
               const isCurrentLine = i === currentLine;
@@ -118,7 +118,7 @@ export default function BootScreen({ onComplete }: BootScreenProps) {
               return (
                 <div
                   key={i}
-                  className={`h-5 ${
+                  className={`h-6 leading-6 ${
                     typedText.includes("SYSTEM READY")
                       ? "text-green-500 font-bold text-glow-green"
                       : typedText.includes("RIFF-BOY")
