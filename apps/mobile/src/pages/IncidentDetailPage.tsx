@@ -55,8 +55,8 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
     },
   });
 
-  const resolveMutation = useMutation({
-    mutationFn: () => incidentsApi.resolve(incidentId!),
+  const unackMutation = useMutation({
+    mutationFn: () => incidentsApi.unack(incidentId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["incident", incidentId] });
       queryClient.invalidateQueries({ queryKey: ["incidents"] });
@@ -126,27 +126,45 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
         </div>
       </div>
 
-      {/* Action buttons */}
-      <div className="flex gap-3 mb-6">
-        {incident.state === "triggered" && (
+      {/* Action button - only acknowledge, resolve happens automatically */}
+      {incident.state === "triggered" && (
+        <div className="mb-6">
           <button
             onClick={() => ackMutation.mutate()}
             disabled={ackMutation.isPending}
-            className="flex-1 py-3 bg-amber-500/20 text-amber-500 rounded border-2 border-amber-500 font-mono font-bold disabled:opacity-50"
+            className="w-full py-3 bg-amber-500/20 text-amber-500 rounded border-2 border-amber-500 font-mono font-bold disabled:opacity-50"
           >
             {ackMutation.isPending ? "..." : "ACKNOWLEDGE"}
           </button>
-        )}
-        {incident.state !== "resolved" && (
+        </div>
+      )}
+
+      {/* Status info and unack button for acked incidents */}
+      {incident.state === "acked" && (
+        <div className="mb-6">
+          <div className="p-3 bg-amber-500/10 rounded-t border border-amber-500/30 border-b-0">
+            <p className="text-amber-500/80 font-mono text-sm text-center">
+              ✓ ACKNOWLEDGED — WAITING FOR AUTO-RESOLVE
+            </p>
+          </div>
           <button
-            onClick={() => resolveMutation.mutate()}
-            disabled={resolveMutation.isPending}
-            className="flex-1 py-3 bg-green-500 text-zinc-900 rounded font-mono font-bold disabled:opacity-50"
+            onClick={() => unackMutation.mutate()}
+            disabled={unackMutation.isPending}
+            className="w-full py-2 bg-zinc-800 text-amber-500/70 rounded-b border border-amber-500/30 font-mono text-sm disabled:opacity-50"
           >
-            {resolveMutation.isPending ? "..." : "RESOLVE"}
+            {unackMutation.isPending ? "..." : "UNACKNOWLEDGE"}
           </button>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Status info for resolved incidents */}
+      {incident.state === "resolved" && (
+        <div className="mb-6 p-3 bg-green-500/10 rounded border border-green-500/30">
+          <p className="text-green-500/80 font-mono text-sm text-center">
+            ✓ RESOLVED
+          </p>
+        </div>
+      )}
 
       {/* Timeline */}
       <div>

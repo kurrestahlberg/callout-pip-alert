@@ -109,7 +109,7 @@ export default function BootScreen({ onComplete }: BootScreenProps) {
           </div>
 
           {/* Boot text - all lines pre-rendered for stable layout */}
-          <div className="font-mono text-sm w-full max-w-md text-left">
+          <div className="font-mono text-sm w-full max-w-md text-left pl-8">
             {BOOT_LINES.map((fullLine, i) => {
               const typedText = displayedText[i] ?? "";
               const isCurrentLine = i === currentLine;
@@ -135,8 +135,8 @@ export default function BootScreen({ onComplete }: BootScreenProps) {
             })}
           </div>
 
-          {/* Loading bar */}
-          <div className="mt-8 w-full max-w-md">
+          {/* Loading bar - fixed to bottom */}
+          <div className="absolute bottom-16 left-8 right-8">
             <div className="h-2 bg-zinc-800 border border-amber-500/30 rounded overflow-hidden">
               <motion.div
                 className="h-full bg-amber-500"
@@ -145,17 +145,16 @@ export default function BootScreen({ onComplete }: BootScreenProps) {
                 transition={{ duration: 0.3 }}
               />
             </div>
+            {/* Skip hint */}
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.4 }}
+              transition={{ delay: 0.3 }}
+              className="text-amber-500/40 text-xs font-mono text-center mt-3"
+            >
+              TAP TO SKIP
+            </motion.p>
           </div>
-
-          {/* Skip hint */}
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.4 }}
-            transition={{ delay: 0.3 }}
-            className="text-amber-500/40 text-xs font-mono text-center mt-8"
-          >
-            TAP TO SKIP
-          </motion.p>
 
           {/* Tap to skip overlay */}
           <div

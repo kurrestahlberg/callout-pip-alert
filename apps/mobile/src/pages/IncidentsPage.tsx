@@ -15,6 +15,8 @@ interface Incident {
   triggered_at: number;
   team_id: string;
   aws_account_id?: string;
+  assigned_to?: string;
+  acked_by?: string;
 }
 
 const severityOrder: Record<Severity, number> = {
@@ -23,32 +25,34 @@ const severityOrder: Record<Severity, number> = {
   info: 2,
 };
 
-const severityConfig: Record<Severity, { dot: string; text: string; bg: string; border: string }> = {
+const severityConfig: Record<Severity, { dot: string; text: string; cardBg: string; border: string }> = {
   critical: {
     dot: "bg-red-500 animate-pulse",
     text: "text-red-500",
-    bg: "bg-red-500/10",
+    cardBg: "bg-red-500/15",
     border: "border-l-red-500",
   },
   warning: {
     dot: "bg-amber-500",
     text: "text-amber-500",
-    bg: "bg-amber-500/10",
+    cardBg: "bg-amber-500/10",
     border: "border-l-amber-500",
   },
   info: {
     dot: "bg-green-500",
     text: "text-green-500",
-    bg: "bg-green-500/10",
+    cardBg: "bg-green-500/10",
     border: "border-l-green-500",
   },
 };
 
-const stateConfig: Record<IncidentState, { label: string; bg: string }> = {
-  triggered: { label: "TRIGGERED", bg: "bg-red-500/20 text-red-500 border border-red-500/50" },
-  acked: { label: "ACKNOWLEDGED", bg: "bg-amber-500/20 text-amber-500 border border-amber-500/50" },
-  resolved: { label: "RESOLVED", bg: "bg-green-500/20 text-green-500 border border-green-500/50" },
-};
+// Tab configuration
+type TabKey = "alarms" | "unacked" | "history";
+const FILTER_TABS: { key: TabKey; label: string; states: IncidentState[] }[] = [
+  { key: "alarms", label: "ALARMS", states: ["triggered", "acked"] },
+  { key: "unacked", label: "UNACKED", states: ["triggered"] },
+  { key: "history", label: "HISTORY", states: ["resolved"] },
+];
 
 function relativeTime(timestamp: number): string {
   const now = Date.now();
@@ -64,10 +68,8 @@ function relativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-const FILTER_TABS = ["all", "triggered", "acked", "resolved"] as const;
-
 export default function IncidentsPage() {
-  const [filter, setFilter] = useState<IncidentState | "all">("all");
+  const [activeTab, setActiveTab] = useState<TabKey>("alarms");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,9 +77,12 @@ export default function IncidentsPage() {
   const { navigate } = useNavigation();
   const queryClient = useQueryClient();
 
+  const currentTab = FILTER_TABS.find(t => t.key === activeTab)!;
+
+  // Fetch all incidents and filter client-side for tabs with multiple states
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["incidents", filter],
-    queryFn: () => incidentsApi.list(filter !== "all" ? { state: filter } : undefined),
+    queryKey: ["incidents"],
+    queryFn: () => incidentsApi.list(),
     refetchInterval: 5000, // Refresh every 5 seconds
   });
 
@@ -95,17 +100,29 @@ export default function IncidentsPage() {
     }
   }, [data?.incidents, queryClient]);
 
-  // Sort: severity first (critical > warning > info), then by time (newest first)
+  // Filter by active tab's states, then sort by severity and time
   const incidents = useMemo(() => {
     const items: Incident[] = data?.incidents || [];
-    return [...items].sort((a, b) => {
-      const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
-      if (severityDiff !== 0) return severityDiff;
-      return b.triggered_at - a.triggered_at;
-    });
+    return items
+      .filter((i) => currentTab.states.includes(i.state))
+      .sort((a, b) => {
+        const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
+        if (severityDiff !== 0) return severityDiff;
+        return b.triggered_at - a.triggered_at;
+      });
+  }, [data?.incidents, currentTab.states]);
+
+  // Count unacked critical for badge (from all data, not filtered)
+  const unackedCriticalCount = useMemo(() => {
+    const items: Incident[] = data?.incidents || [];
+    return items.filter((i) => i.state === "triggered" && i.severity === "critical").length;
   }, [data?.incidents]);
 
-  const triggeredCount = incidents.filter((i) => i.state === "triggered").length;
+  // Count alarms (triggered + acked)
+  const alarmsCount = useMemo(() => {
+    const items: Incident[] = data?.incidents || [];
+    return items.filter((i) => i.state === "triggered" || i.state === "acked").length;
+  }, [data?.incidents]);
 
   // Touch handlers for pull-to-refresh and tab swiping
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -145,13 +162,13 @@ export default function IncidentsPage() {
 
     // Horizontal swipe for tab navigation (only if horizontal movement > vertical)
     if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
-      const currentIndex = FILTER_TABS.indexOf(filter);
+      const currentIndex = FILTER_TABS.findIndex(t => t.key === activeTab);
       if (deltaX < 0 && currentIndex < FILTER_TABS.length - 1) {
         // Swipe left -> next tab
-        setFilter(FILTER_TABS[currentIndex + 1]);
+        setActiveTab(FILTER_TABS[currentIndex + 1].key);
       } else if (deltaX > 0 && currentIndex > 0) {
         // Swipe right -> previous tab
-        setFilter(FILTER_TABS[currentIndex - 1]);
+        setActiveTab(FILTER_TABS[currentIndex - 1].key);
       }
     }
 
@@ -182,26 +199,26 @@ export default function IncidentsPage() {
       <div className="bg-zinc-800 border-b-2 border-amber-500/30 px-4 py-3 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-2xl font-bold text-amber-500 font-mono tracking-wider text-glow">ALERTS</h1>
-          {triggeredCount > 0 && (
-            <span className="bg-red-500/20 text-red-500 text-sm font-bold font-mono px-2 py-1 rounded border border-red-500/50 pulse-glow-red text-glow-red">
-              {triggeredCount} ACTIVE
+          {unackedCriticalCount > 0 && (
+            <span className="bg-red-500/20 text-red-500 text-sm font-bold font-mono px-2 py-1 rounded border border-red-500/50 pulse-glow-red text-glow-red flex items-center gap-2">
+              {unackedCriticalCount} <span className="text-xl leading-none -mt-0.5">☢</span>
             </span>
           )}
         </div>
 
         {/* Filter tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {(["all", "triggered", "acked", "resolved"] as const).map((state) => (
+        <div className="flex gap-2 pb-1">
+          {FILTER_TABS.map((tab) => (
             <button
-              key={state}
-              onClick={() => setFilter(state)}
-              className={`px-3 py-1.5 rounded text-sm font-bold font-mono whitespace-nowrap transition-colors border ${
-                filter === state
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 px-3 py-1.5 rounded text-sm font-bold font-mono whitespace-nowrap transition-colors border ${
+                activeTab === tab.key
                   ? "bg-amber-500 text-zinc-900 border-amber-500"
                   : "bg-zinc-900 text-amber-500/70 border-amber-500/30 hover:border-amber-500/50"
               }`}
             >
-              {state === "all" ? "ALL" : stateConfig[state].label}
+              {tab.key === "alarms" && alarmsCount > 0 ? `${tab.label} (${alarmsCount})` : tab.label}
             </button>
           ))}
         </div>
@@ -227,8 +244,22 @@ export default function IncidentsPage() {
 
       {incidents.length === 0 && !isLoading && (
         <div className="text-center py-12">
-          <div className="text-green-500 text-4xl mb-2 font-mono text-glow-green">[OK]</div>
-          <p className="text-amber-500/60 font-mono">NO ACTIVE INCIDENTS</p>
+          {activeTab === "alarms" ? (
+            <>
+              <div className="text-green-500 text-4xl mb-2 font-mono text-glow-green">[OK]</div>
+              <p className="text-amber-500/60 font-mono">NO ACTIVE ALARMS</p>
+            </>
+          ) : activeTab === "unacked" ? (
+            <>
+              <div className="text-green-500 text-4xl mb-2 font-mono text-glow-green">[OK]</div>
+              <p className="text-amber-500/60 font-mono">ALL ALARMS ACKNOWLEDGED</p>
+            </>
+          ) : (
+            <>
+              <div className="text-amber-500/50 text-4xl mb-2 font-mono">[...]</div>
+              <p className="text-amber-500/60 font-mono">NO HISTORY</p>
+            </>
+          )}
         </div>
       )}
 
@@ -250,9 +281,14 @@ function IncidentCard({
   onClick: () => void;
 }) {
   const config = severityConfig[incident.severity];
-  const state = stateConfig[incident.state];
-
+  const isAcked = incident.state === "acked";
+  const isResolved = incident.state === "resolved";
   const isCriticalTriggered = incident.severity === "critical" && incident.state === "triggered";
+
+  // Card styling based on state
+  const cardClasses = isAcked || isResolved
+    ? "bg-zinc-800/60 opacity-75" // Muted for acked/resolved
+    : config.cardBg; // Severity-based background for triggered
 
   return (
     <motion.div
@@ -263,16 +299,34 @@ function IncidentCard({
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.15, layout: { duration: 0.15 } }}
       onClick={onClick}
-      className={`bg-zinc-800 rounded border-l-4 ${config.border} cursor-pointer active:bg-zinc-700 overflow-hidden border border-amber-500/20 ${isCriticalTriggered ? "pulse-glow-red" : ""}`}
+      className={`${cardClasses} rounded border-l-4 ${config.border} cursor-pointer active:bg-zinc-700 overflow-hidden border border-amber-500/20 ${isCriticalTriggered ? "pulse-glow-red" : ""}`}
     >
       <div className="p-3">
-        {/* Top row: severity indicator + time */}
+        {/* Top row: severity indicator + time + ack badge */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${config.dot}`} />
-            <span className={`text-sm font-bold font-mono uppercase tracking-wider ${config.text}`}>
+            <div className={`w-2 h-2 rounded-full ${isAcked || isResolved ? "bg-zinc-500" : config.dot}`} />
+            <span className={`text-sm font-bold font-mono uppercase tracking-wider ${isAcked || isResolved ? "text-zinc-400" : config.text}`}>
               {incident.severity}
             </span>
+            {/* Ack checkmark badge with person's name */}
+            {isAcked && (
+              <span className="flex items-center gap-1 text-xs font-mono text-amber-500/70 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                {incident.acked_by || incident.assigned_to || "ACK"}
+              </span>
+            )}
+            {/* Resolved badge */}
+            {isResolved && (
+              <span className="flex items-center gap-1 text-xs font-mono text-green-500/70 bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/30">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                OK
+              </span>
+            )}
           </div>
           <span className="text-sm text-amber-500/50 font-mono">
             {relativeTime(incident.triggered_at)}
@@ -280,21 +334,18 @@ function IncidentCard({
         </div>
 
         {/* Alarm name */}
-        <h3 className="font-medium text-amber-500 mb-2 leading-snug font-mono text-base">
+        <h3 className={`font-medium mb-2 leading-snug font-mono text-base ${isAcked || isResolved ? "text-amber-500/60" : "text-amber-500"}`}>
           {incident.alarm_name}
         </h3>
 
-        {/* Bottom row: state badge */}
-        <div className="flex items-center justify-between">
-          <span className={`text-sm font-bold font-mono px-2 py-0.5 rounded ${state.bg}`}>
-            {state.label}
-          </span>
-          {incident.aws_account_id && (
+        {/* Bottom row: AWS account */}
+        {incident.aws_account_id && (
+          <div className="flex items-center justify-end">
             <span className="text-sm text-amber-500/40 font-mono">
               {incident.aws_account_id}
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </motion.div>
   );

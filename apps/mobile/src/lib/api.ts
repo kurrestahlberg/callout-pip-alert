@@ -52,6 +52,7 @@ export const incidentsApi = {
   },
   get: (id: string) => fetchWithAuth(`/incidents/${id}`),
   ack: (id: string) => fetchWithAuth(`/incidents/${id}/ack`, { method: "POST" }),
+  unack: (id: string) => fetchWithAuth(`/incidents/${id}/unack`, { method: "POST" }),
   resolve: (id: string, note?: string) =>
     fetchWithAuth(`/incidents/${id}/resolve`, {
       method: "POST",
