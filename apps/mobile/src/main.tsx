@@ -1,6 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./lib/auth";
 import App from "./App";
@@ -57,11 +56,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
-        </BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   </React.StrictMode>

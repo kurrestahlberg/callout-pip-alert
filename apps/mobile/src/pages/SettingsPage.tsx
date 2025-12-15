@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { useNavigation } from "../lib/navigation";
 import {
   CloudBackend,
   getBackends,
@@ -72,7 +72,7 @@ const emptyFormData: BackendFormData = {
 
 export default function SettingsPage() {
   const { user, signOut, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
+  const { navigate } = useNavigation();
   const [backends, setBackends] = useState<CloudBackend[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -193,7 +193,7 @@ export default function SettingsPage() {
       <div className="bg-zinc-800 rounded border-2 border-amber-500/30 mb-4">
         <div className="p-4 border-b-2 border-amber-500/20">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-amber-500 font-mono">&gt; CLOUD BACKENDS</h2>
+            <h2 className="text-sm font-bold text-amber-500 font-mono">{">"} CLOUD BACKENDS</h2>
             <button
               onClick={showForm ? resetForm : handleAddClick}
               className="text-sm text-amber-500 font-mono font-bold"
@@ -208,7 +208,7 @@ export default function SettingsPage() {
           <div className="p-4 border-b-2 border-amber-500/20 bg-zinc-900/50">
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">&gt; NAME</label>
+                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">{">"} NAME</label>
                 <input
                   type="text"
                   placeholder="e.g., Production"
@@ -218,7 +218,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">&gt; API URL</label>
+                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">{">"} API URL</label>
                 <input
                   type="text"
                   placeholder="https://xxx.execute-api.region.amazonaws.com"
@@ -228,7 +228,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">&gt; REGION</label>
+                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">{">"} REGION</label>
                 <input
                   type="text"
                   placeholder="e.g., eu-west-1"
@@ -238,7 +238,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">&gt; USER POOL ID</label>
+                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">{">"} USER POOL ID</label>
                 <input
                   type="text"
                   placeholder="e.g., eu-west-1_xxxxxxxxx"
@@ -248,7 +248,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">&gt; USER POOL CLIENT ID</label>
+                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">{">"} USER POOL CLIENT ID</label>
                 <input
                   type="text"
                   placeholder="e.g., xxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -326,7 +326,7 @@ export default function SettingsPage() {
         <div className="bg-zinc-800 rounded border-2 border-amber-500/30 p-4 mb-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold text-amber-500 font-mono">&gt; USE {biometricType.toUpperCase()}</h2>
+              <h2 className="text-sm font-bold text-amber-500 font-mono">{">"} USE {biometricType.toUpperCase()}</h2>
               <p className="text-xs text-amber-500/60 mt-0.5 font-mono">
                 {biometricEnabled && hasCredentials
                   ? "QUICK SIGN IN ENABLED"
@@ -357,14 +357,14 @@ export default function SettingsPage() {
       {/* User info */}
       {isAuthenticated && (
         <div className="bg-zinc-800 rounded border-2 border-amber-500/30 p-4 mb-4">
-          <h2 className="text-sm font-bold text-amber-500/70 font-mono mb-2">&gt; ACCOUNT</h2>
+          <h2 className="text-sm font-bold text-amber-500/70 font-mono mb-2">{">"} ACCOUNT</h2>
           <p className="font-bold text-amber-500 font-mono">{user?.getUsername() || "NOT SIGNED IN"}</p>
         </div>
       )}
 
       {/* App info */}
       <div className="bg-zinc-800 rounded border-2 border-amber-500/30 p-4 mb-4">
-        <h2 className="text-sm font-bold text-amber-500/70 font-mono mb-2">&gt; SYSTEM INFO</h2>
+        <h2 className="text-sm font-bold text-amber-500/70 font-mono mb-2">{">"} SYSTEM INFO</h2>
         <p className="text-amber-500 font-mono">RIFF-BOY v0.1.0</p>
       </div>
 
@@ -378,7 +378,7 @@ export default function SettingsPage() {
         </button>
       ) : (
         <button
-          onClick={() => navigate("/login")}
+          onClick={() => navigate("login")}
           className="w-full py-3 bg-amber-500 text-zinc-900 rounded font-mono font-bold"
         >
           GO TO LOGIN

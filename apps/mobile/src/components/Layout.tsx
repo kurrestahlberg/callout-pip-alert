@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { useNavigation, Page } from "../lib/navigation";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -6,38 +6,39 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   return (
-    <div className="flex flex-col h-screen bg-zinc-900">
-      <main className="flex-1 overflow-auto safe-area-top">{children}</main>
+    <div className="flex flex-col h-screen bg-zinc-900 crt-effect">
+      <main className="flex-1 overflow-hidden safe-area-top relative">{children}</main>
 
-      <nav className="flex border-t-2 border-amber-500/30 bg-zinc-800 safe-area-bottom">
-        <TabLink to="/incidents" icon={<AlertIcon />} label="ALERTS" />
-        <TabLink to="/schedule" icon={<CalendarIcon />} label="SCHEDULE" />
-        <TabLink to="/team" icon={<UsersIcon />} label="TEAM" />
-        <TabLink to="/settings" icon={<GearIcon />} label="CONFIG" />
+      <nav className="flex border-t-2 border-amber-500/30 bg-zinc-800 safe-area-bottom border-glow">
+        <TabLink page="incidents" icon={<AlertIcon />} label="ALERTS" />
+        <TabLink page="schedule" icon={<CalendarIcon />} label="SCHEDULE" />
+        <TabLink page="team" icon={<UsersIcon />} label="TEAM" />
+        <TabLink page="settings" icon={<GearIcon />} label="CONFIG" />
       </nav>
     </div>
   );
 }
 
 interface TabLinkProps {
-  to: string;
+  page: Page;
   icon: React.ReactNode;
   label: string;
 }
 
-function TabLink({ to, icon, label }: TabLinkProps) {
+function TabLink({ page, icon, label }: TabLinkProps) {
+  const { state, navigate } = useNavigation();
+  const isActive = state.currentPage === page || (page === "incidents" && state.currentPage === "incident-detail");
+
   return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        `flex-1 flex flex-col items-center py-2 text-xs font-mono ${
-          isActive ? "text-amber-500" : "text-amber-500/40"
-        }`
-      }
+    <button
+      onClick={() => navigate(page)}
+      className={`flex-1 flex flex-col items-center py-2 text-sm font-mono transition-all ${
+        isActive ? "text-amber-500 text-glow" : "text-amber-500/40"
+      }`}
     >
-      <span className="w-6 h-6 mb-0.5">{icon}</span>
+      <span className="w-7 h-7 mb-0.5">{icon}</span>
       <span className="font-bold">{label}</span>
-    </NavLink>
+    </button>
   );
 }
 

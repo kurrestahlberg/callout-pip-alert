@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { incidentsApi } from "../lib/api";
+import { useNavigation } from "../lib/navigation";
 
 type IncidentState = "triggered" | "acked" | "resolved";
 type Severity = "critical" | "warning" | "info";
@@ -72,7 +72,7 @@ export default function IncidentsPage() {
   const [pullDistance, setPullDistance] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-  const navigate = useNavigate();
+  const { navigate } = useNavigation();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["incidents", filter],
@@ -165,9 +165,9 @@ export default function IncidentsPage() {
       {/* Header */}
       <div className="bg-zinc-800 border-b-2 border-amber-500/30 px-4 py-3 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-xl font-bold text-amber-500 font-mono tracking-wider">ALERTS</h1>
+          <h1 className="text-2xl font-bold text-amber-500 font-mono tracking-wider text-glow">ALERTS</h1>
           {triggeredCount > 0 && (
-            <span className="bg-red-500/20 text-red-500 text-xs font-bold font-mono px-2 py-1 rounded border border-red-500/50">
+            <span className="bg-red-500/20 text-red-500 text-sm font-bold font-mono px-2 py-1 rounded border border-red-500/50 pulse-glow-red text-glow-red">
               {triggeredCount} ACTIVE
             </span>
           )}
@@ -179,7 +179,7 @@ export default function IncidentsPage() {
             <button
               key={state}
               onClick={() => setFilter(state)}
-              className={`px-3 py-1.5 rounded text-xs font-bold font-mono whitespace-nowrap transition-colors border ${
+              className={`px-3 py-1.5 rounded text-sm font-bold font-mono whitespace-nowrap transition-colors border ${
                 filter === state
                   ? "bg-amber-500 text-zinc-900 border-amber-500"
                   : "bg-zinc-900 text-amber-500/70 border-amber-500/30 hover:border-amber-500/50"
@@ -193,7 +193,7 @@ export default function IncidentsPage() {
 
       {/* Loading */}
       {isLoading && (
-        <div className="text-center text-amber-500 font-mono py-8">&gt; LOADING INCIDENTS...</div>
+        <div className="text-center text-amber-500 font-mono py-8">{">"} LOADING INCIDENTS...</div>
       )}
 
       {/* Incident list */}
@@ -203,7 +203,7 @@ export default function IncidentsPage() {
             <IncidentCard
               key={incident.incident_id}
               incident={incident}
-              onClick={() => navigate(`/incidents/${incident.incident_id}`)}
+              onClick={() => navigate("incident-detail", { incidentId: incident.incident_id })}
             />
           ))}
         </AnimatePresence>
@@ -211,15 +211,15 @@ export default function IncidentsPage() {
 
       {incidents.length === 0 && !isLoading && (
         <div className="text-center py-12">
-          <div className="text-green-500 text-4xl mb-2 font-mono">[OK]</div>
+          <div className="text-green-500 text-4xl mb-2 font-mono text-glow-green">[OK]</div>
           <p className="text-amber-500/60 font-mono">NO ACTIVE INCIDENTS</p>
         </div>
       )}
 
       {/* Swipe hint for tab navigation */}
       {incidents.length > 0 && (
-        <p className="text-xs text-amber-500/40 text-center py-4 font-mono">
-          &lt; SWIPE TO CHANGE FILTER &gt;
+        <p className="text-sm text-amber-500/40 text-center py-4 font-mono">
+          {"<"} SWIPE TO CHANGE FILTER {">"}
         </p>
       )}
     </div>
@@ -236,6 +236,8 @@ function IncidentCard({
   const config = severityConfig[incident.severity];
   const state = stateConfig[incident.state];
 
+  const isCriticalTriggered = incident.severity === "critical" && incident.state === "triggered";
+
   return (
     <motion.div
       layout="position"
@@ -245,34 +247,34 @@ function IncidentCard({
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.15, layout: { duration: 0.15 } }}
       onClick={onClick}
-      className={`bg-zinc-800 rounded border-l-4 ${config.border} cursor-pointer active:bg-zinc-700 overflow-hidden border border-amber-500/20`}
+      className={`bg-zinc-800 rounded border-l-4 ${config.border} cursor-pointer active:bg-zinc-700 overflow-hidden border border-amber-500/20 ${isCriticalTriggered ? "pulse-glow-red" : ""}`}
     >
       <div className="p-3">
         {/* Top row: severity indicator + time */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${config.dot}`} />
-            <span className={`text-xs font-bold font-mono uppercase tracking-wider ${config.text}`}>
+            <span className={`text-sm font-bold font-mono uppercase tracking-wider ${config.text}`}>
               {incident.severity}
             </span>
           </div>
-          <span className="text-xs text-amber-500/50 font-mono">
+          <span className="text-sm text-amber-500/50 font-mono">
             {relativeTime(incident.triggered_at)}
           </span>
         </div>
 
         {/* Alarm name */}
-        <h3 className="font-medium text-amber-500 mb-2 leading-snug font-mono">
+        <h3 className="font-medium text-amber-500 mb-2 leading-snug font-mono text-base">
           {incident.alarm_name}
         </h3>
 
         {/* Bottom row: state badge */}
         <div className="flex items-center justify-between">
-          <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded ${state.bg}`}>
+          <span className={`text-sm font-bold font-mono px-2 py-0.5 rounded ${state.bg}`}>
             {state.label}
           </span>
           {incident.aws_account_id && (
-            <span className="text-xs text-amber-500/40 font-mono">
+            <span className="text-sm text-amber-500/40 font-mono">
               {incident.aws_account_id}
             </span>
           )}

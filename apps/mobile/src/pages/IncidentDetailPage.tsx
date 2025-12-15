@@ -1,6 +1,6 @@
-import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { incidentsApi } from "../lib/api";
+import { useNavigation } from "../lib/navigation";
 
 interface TimelineEntry {
   timestamp: number;
@@ -22,38 +22,45 @@ interface Incident {
   timeline: TimelineEntry[];
 }
 
-export default function IncidentDetailPage() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+interface IncidentDetailPageProps {
+  incidentId: string | null;
+}
+
+export default function IncidentDetailPage({ incidentId }: IncidentDetailPageProps) {
+  const { goBack } = useNavigation();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["incident", id],
-    queryFn: () => incidentsApi.get(id!),
-    enabled: !!id,
+    queryKey: ["incident", incidentId],
+    queryFn: () => incidentsApi.get(incidentId!),
+    enabled: !!incidentId,
   });
 
   const ackMutation = useMutation({
-    mutationFn: () => incidentsApi.ack(id!),
+    mutationFn: () => incidentsApi.ack(incidentId!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["incident", id] });
+      queryClient.invalidateQueries({ queryKey: ["incident", incidentId] });
       queryClient.invalidateQueries({ queryKey: ["incidents"] });
     },
   });
 
   const resolveMutation = useMutation({
-    mutationFn: () => incidentsApi.resolve(id!),
+    mutationFn: () => incidentsApi.resolve(incidentId!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["incident", id] });
+      queryClient.invalidateQueries({ queryKey: ["incident", incidentId] });
       queryClient.invalidateQueries({ queryKey: ["incidents"] });
     },
   });
 
   const incident: Incident | undefined = data?.incident;
 
+  if (!incidentId) {
+    return null;
+  }
+
   if (isLoading) {
     return (
-      <div className="min-h-full bg-zinc-900 p-4 text-center text-amber-500 font-mono">&gt; LOADING...</div>
+      <div className="min-h-full bg-zinc-900 p-4 text-center text-amber-500 font-mono">{">"} LOADING...</div>
     );
   }
 
@@ -70,23 +77,23 @@ export default function IncidentDetailPage() {
   };
 
   return (
-    <div className="min-h-full bg-zinc-900 p-4">
+    <div className="min-h-full bg-zinc-900 p-4 overflow-auto">
       {/* Back button */}
       <button
-        onClick={() => navigate(-1)}
+        onClick={goBack}
         className="text-amber-500 font-mono font-bold mb-4 flex items-center gap-1"
       >
-        &lt; BACK
+        {"<"} BACK
       </button>
 
       {/* Header */}
       <div className="mb-6">
         <span
-          className={`inline-block px-2 py-1 rounded text-xs font-bold font-mono mb-2 ${severityColors[incident.severity]}`}
+          className={`inline-block px-2 py-1 rounded text-sm font-bold font-mono mb-2 ${severityColors[incident.severity]}`}
         >
           {incident.severity.toUpperCase()}
         </span>
-        <h1 className="text-xl font-bold text-amber-500 font-mono">{incident.alarm_name}</h1>
+        <h1 className="text-xl font-bold text-amber-500 font-mono text-glow">{incident.alarm_name}</h1>
         <p className="text-sm text-amber-500/50 mt-1 break-all font-mono">{incident.alarm_arn}</p>
       </div>
 
@@ -132,7 +139,7 @@ export default function IncidentDetailPage() {
 
       {/* Timeline */}
       <div>
-        <h2 className="font-bold text-amber-500 font-mono mb-3">&gt; TIMELINE</h2>
+        <h2 className="font-bold text-amber-500 font-mono mb-3">{">"} TIMELINE</h2>
         <div className="space-y-3">
           {incident.timeline?.map((entry, i) => (
             <div key={i} className="flex gap-3 text-sm font-mono">

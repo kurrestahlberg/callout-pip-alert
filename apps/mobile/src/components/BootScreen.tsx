@@ -1,0 +1,166 @@
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+
+interface BootScreenProps {
+  onComplete: () => void;
+}
+
+const BOOT_LINES = [
+  "VAULT-TEC INDUSTRIES (R) TERMLINK PROTOCOL",
+  "CALLOUT RIFF-BOY v0.1.0",
+  "",
+  "COPYRIGHT 2077 VAULT-TEC INDUSTRIES",
+  "",
+  "INITIALIZING SYSTEM...",
+  "LOADING INCIDENT PROTOCOLS...",
+  "CONNECTING TO VAULT NETWORK...",
+  "BIOMETRIC SCANNER READY...",
+  "",
+  "SYSTEM READY",
+];
+
+export default function BootScreen({ onComplete }: BootScreenProps) {
+  const [currentLine, setCurrentLine] = useState(0);
+  const [displayedText, setDisplayedText] = useState<string[]>([]);
+  const [charIndex, setCharIndex] = useState(0);
+  const [showCursor, setShowCursor] = useState(true);
+  const [bootComplete, setBootComplete] = useState(false);
+
+  // Cursor blink effect
+  useEffect(() => {
+    const cursorInterval = setInterval(() => {
+      setShowCursor((prev) => !prev);
+    }, 500);
+    return () => clearInterval(cursorInterval);
+  }, []);
+
+  // Typewriter effect
+  useEffect(() => {
+    if (currentLine >= BOOT_LINES.length) {
+      setTimeout(() => {
+        setBootComplete(true);
+        setTimeout(onComplete, 800);
+      }, 500);
+      return;
+    }
+
+    const line = BOOT_LINES[currentLine];
+
+    if (line === "") {
+      // Empty line - just add it and move on
+      setDisplayedText((prev) => [...prev, ""]);
+      setCurrentLine((prev) => prev + 1);
+      setCharIndex(0);
+      return;
+    }
+
+    if (charIndex < line.length) {
+      const timeout = setTimeout(() => {
+        setDisplayedText((prev) => {
+          const newText = [...prev];
+          if (newText.length <= currentLine) {
+            newText.push(line.charAt(charIndex));
+          } else {
+            newText[currentLine] = newText[currentLine] + line.charAt(charIndex);
+          }
+          return newText;
+        });
+        setCharIndex((prev) => prev + 1);
+      }, 20 + Math.random() * 30); // Slightly random typing speed
+
+      return () => clearTimeout(timeout);
+    } else {
+      // Line complete, move to next
+      const timeout = setTimeout(() => {
+        setCurrentLine((prev) => prev + 1);
+        setCharIndex(0);
+      }, 100);
+      return () => clearTimeout(timeout);
+    }
+  }, [currentLine, charIndex, onComplete]);
+
+  return (
+    <AnimatePresence>
+      {!bootComplete && (
+        <motion.div
+          initial={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5 }}
+          className="fixed inset-0 z-50 bg-zinc-900 flex flex-col justify-center p-6 crt-effect"
+        >
+          {/* Decorative border */}
+          <div className="absolute inset-4 border-2 border-amber-500/30 rounded-lg pointer-events-none" />
+
+          {/* Corner decorations */}
+          <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-amber-500 rounded-tl-lg" />
+          <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-amber-500 rounded-tr-lg" />
+          <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-amber-500 rounded-bl-lg" />
+          <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-amber-500 rounded-br-lg" />
+
+          {/* Vault Boy ASCII Art */}
+          <div className="text-amber-500 font-mono text-center mb-8 text-xs leading-tight whitespace-pre opacity-60">
+{`    ████████
+   ██      ██
+  ██  ●  ●  ██
+  ██    ▼   ██
+  ██  \\__/  ██
+   ██      ██
+    ████████    `}
+          </div>
+
+          {/* Boot text */}
+          <div className="font-mono text-sm space-y-1 max-w-md mx-auto">
+            {displayedText.map((line, i) => (
+              <div
+                key={i}
+                className={`${
+                  line.includes("SYSTEM READY")
+                    ? "text-green-500 font-bold text-glow-green"
+                    : line.includes("RIFF-BOY")
+                    ? "text-amber-500 font-bold text-glow"
+                    : "text-amber-500/80"
+                }`}
+              >
+                {line}
+                {i === displayedText.length - 1 && showCursor && (
+                  <span className="text-amber-500">█</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Loading bar */}
+          <div className="mt-8 max-w-md mx-auto w-full">
+            <div className="h-2 bg-zinc-800 border border-amber-500/30 rounded overflow-hidden">
+              <motion.div
+                className="h-full bg-amber-500"
+                initial={{ width: 0 }}
+                animate={{ width: `${(currentLine / BOOT_LINES.length) * 100}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
+          </div>
+
+          {/* Skip hint */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.4 }}
+            transition={{ delay: 1 }}
+            className="text-amber-500/40 text-xs font-mono text-center mt-8"
+          >
+            TAP TO SKIP
+          </motion.p>
+
+          {/* Tap to skip overlay */}
+          <div
+            className="absolute inset-0"
+            onClick={() => {
+              setBootComplete(true);
+              onComplete();
+            }}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}

@@ -33,7 +33,7 @@ export default function SchedulePage() {
       <h1 className="text-xl font-bold text-amber-500 font-mono tracking-wider mb-4">SCHEDULE</h1>
 
       {isLoading && (
-        <div className="text-center text-amber-500 font-mono py-4">&gt; LOADING...</div>
+        <div className="text-center text-amber-500 font-mono py-4">{">"} LOADING...</div>
       )}
 
       {/* Current on-call by team */}

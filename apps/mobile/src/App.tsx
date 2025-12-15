@@ -1,8 +1,9 @@
-import { useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { useAuth } from "./lib/auth";
 import { setTokenGetter } from "./lib/api";
+import { NavigationProvider, useNavigation, Page } from "./lib/navigation";
 import Layout from "./components/Layout";
+import BootScreen from "./components/BootScreen";
 import LoginPage from "./pages/LoginPage";
 import IncidentsPage from "./pages/IncidentsPage";
 import IncidentDetailPage from "./pages/IncidentDetailPage";
@@ -10,60 +11,97 @@ import SchedulePage from "./pages/SchedulePage";
 import TeamPage from "./pages/TeamPage";
 import SettingsPage from "./pages/SettingsPage";
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function PageContainer({ page, isVisible, children }: { page: Page; isVisible: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={`absolute inset-0 ${isVisible ? "z-10" : "z-0 pointer-events-none"}`}
+      style={{
+        visibility: isVisible ? "visible" : "hidden",
+        opacity: isVisible ? 1 : 0,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
+  const { state, navigate } = useNavigation();
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && state.currentPage !== "login" && state.currentPage !== "settings") {
+      navigate("login");
+    }
+  }, [isLoading, isAuthenticated, state.currentPage, navigate]);
+
+  // Redirect to incidents after login
+  useEffect(() => {
+    if (isAuthenticated && state.currentPage === "login") {
+      navigate("incidents");
+    }
+  }, [isAuthenticated, state.currentPage, navigate]);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-gray-500">Loading...</div>
+      <div className="flex items-center justify-center h-screen bg-zinc-900">
+        <div className="text-amber-500 font-mono text-glow">{">"} AUTHENTICATING...</div>
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  const showLayout = state.currentPage !== "login";
+  const mainPages: Page[] = ["incidents", "schedule", "team", "settings"];
 
-  return <>{children}</>;
+  return (
+    <div className="h-screen bg-zinc-900 relative overflow-hidden">
+      {/* Login page - no layout */}
+      <PageContainer page="login" isVisible={state.currentPage === "login"}>
+        <LoginPage />
+      </PageContainer>
+
+      {/* Main app with layout */}
+      {showLayout && (
+        <Layout>
+          <div className="relative h-full">
+            {/* Tab pages */}
+            {mainPages.map((page) => (
+              <PageContainer key={page} page={page} isVisible={state.currentPage === page}>
+                {page === "incidents" && <IncidentsPage />}
+                {page === "schedule" && <SchedulePage />}
+                {page === "team" && <TeamPage />}
+                {page === "settings" && <SettingsPage />}
+              </PageContainer>
+            ))}
+
+            {/* Incident detail overlay */}
+            <PageContainer page="incident-detail" isVisible={state.currentPage === "incident-detail"}>
+              <IncidentDetailPage incidentId={state.incidentId} />
+            </PageContainer>
+          </div>
+        </Layout>
+      )}
+    </div>
+  );
 }
 
 function App() {
   const { getToken } = useAuth();
+  const [bootComplete, setBootComplete] = useState(false);
 
   useEffect(() => {
     setTokenGetter(getToken);
   }, [getToken]);
 
+  if (!bootComplete) {
+    return <BootScreen onComplete={() => setBootComplete(true)} />;
+  }
+
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      {/* Settings accessible without auth for initial backend setup */}
-      <Route
-        path="/settings"
-        element={
-          <Layout>
-            <SettingsPage />
-          </Layout>
-        }
-      />
-      <Route
-        path="/*"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Navigate to="/incidents" replace />} />
-                <Route path="/incidents" element={<IncidentsPage />} />
-                <Route path="/incidents/:id" element={<IncidentDetailPage />} />
-                <Route path="/schedule" element={<SchedulePage />} />
-                <Route path="/team" element={<TeamPage />} />
-              </Routes>
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-    </Routes>
+    <NavigationProvider>
+      <AppContent />
+    </NavigationProvider>
   );
 }
 

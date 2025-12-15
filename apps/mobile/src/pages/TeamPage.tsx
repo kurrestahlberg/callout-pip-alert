@@ -77,7 +77,7 @@ export default function TeamPage() {
       )}
 
       {isLoading && (
-        <div className="text-center text-amber-500 font-mono py-4">&gt; LOADING...</div>
+        <div className="text-center text-amber-500 font-mono py-4">{">"} LOADING...</div>
       )}
 
       {/* Team list */}

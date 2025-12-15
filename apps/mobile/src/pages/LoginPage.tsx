@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState } from "react";
 import { useAuth } from "../lib/auth";
+import { useNavigation } from "../lib/navigation";
 
 export default function LoginPage() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const { signIn, signUp, confirmSignUp, signInWithBiometric, isConfigured, canUseBiometric, biometricType } = useAuth();
-  const navigate = useNavigate();
+  const { navigate } = useNavigation();
 
   // Note: Auto-biometric login disabled - user must tap the biometric button
   // useEffect(() => {
@@ -29,7 +29,7 @@ export default function LoginPage() {
     try {
       const success = await signInWithBiometric();
       if (success) {
-        navigate("/incidents");
+        navigate("incidents");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Biometric login failed");
@@ -54,7 +54,7 @@ export default function LoginPage() {
         setIsConfirming(true);
       } else {
         await signIn(email, password);
-        navigate("/incidents");
+        navigate("incidents");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -64,10 +64,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-zinc-900">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-zinc-900 crt-effect">
       <div className="w-full max-w-sm">
         {/* Terminal Header */}
-        <div className="border-2 border-amber-500/50 rounded-t-lg bg-zinc-800 px-4 py-2 flex items-center gap-2">
+        <div className="border-2 border-amber-500/50 rounded-t-lg bg-zinc-800 px-4 py-2 flex items-center gap-2 border-glow">
           <div className="w-3 h-3 rounded-full bg-red-500/80" />
           <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
           <div className="w-3 h-3 rounded-full bg-green-500/80" />
@@ -75,10 +75,10 @@ export default function LoginPage() {
         </div>
 
         {/* Main Terminal */}
-        <div className="border-2 border-t-0 border-amber-500/50 rounded-b-lg bg-zinc-900 p-6">
+        <div className="border-2 border-t-0 border-amber-500/50 rounded-b-lg bg-zinc-900 p-6 border-glow">
           <div className="text-center mb-6">
-            <h1 className="text-3xl font-bold text-amber-500 font-mono tracking-wider">RIFF-BOY</h1>
-            <p className="text-amber-500/60 font-mono text-sm mt-1">&gt; INCIDENT MANAGEMENT SYSTEM</p>
+            <h1 className="text-3xl font-bold text-amber-500 font-mono tracking-wider text-glow">RIFF-BOY</h1>
+            <p className="text-amber-500/60 font-mono text-sm mt-1">{">"} INCIDENT MANAGEMENT SYSTEM</p>
           </div>
 
           {!isConfigured && (
@@ -86,12 +86,12 @@ export default function LoginPage() {
               <p className="text-amber-500 text-sm font-mono mb-3">
                 [WARNING] NO BACKEND CONFIGURED
               </p>
-              <Link
-                to="/settings"
+              <button
+                onClick={() => navigate("settings")}
                 className="block w-full py-2 bg-amber-500 text-zinc-900 rounded font-mono font-bold text-center hover:bg-amber-400"
               >
                 CONFIGURE BACKEND
-              </Link>
+              </button>
             </div>
           )}
 
@@ -124,7 +124,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignUp && !isConfirming && (
               <div>
-                <label className="block text-amber-500/70 font-mono text-xs mb-1">&gt; NAME</label>
+                <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} NAME</label>
                 <input
                   type="text"
                   placeholder="Enter your name"
@@ -139,7 +139,7 @@ export default function LoginPage() {
             {!isConfirming && (
               <>
                 <div>
-                  <label className="block text-amber-500/70 font-mono text-xs mb-1">&gt; EMAIL</label>
+                  <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} EMAIL</label>
                   <input
                     type="email"
                     placeholder="Enter your email"
@@ -150,7 +150,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-amber-500/70 font-mono text-xs mb-1">&gt; PASSWORD</label>
+                  <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} PASSWORD</label>
                   <input
                     type="password"
                     placeholder="Enter your password"
@@ -165,7 +165,7 @@ export default function LoginPage() {
 
             {isConfirming && (
               <div>
-                <label className="block text-amber-500/70 font-mono text-xs mb-1">&gt; CONFIRMATION CODE</label>
+                <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} CONFIRMATION CODE</label>
                 <input
                   type="text"
                   placeholder="Enter code from email"
@@ -206,7 +206,7 @@ export default function LoginPage() {
               }}
               className="w-full mt-4 text-amber-500/70 text-sm font-mono hover:text-amber-500"
             >
-              {isSignUp ? "&lt; BACK TO LOGIN" : "&gt; CREATE NEW ACCOUNT"}
+              {isSignUp ? "{"<"} BACK TO LOGIN" : "{">"} CREATE NEW ACCOUNT"}
             </button>
           )}
         </div>
