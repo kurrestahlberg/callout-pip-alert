@@ -1,0 +1,14 @@
+{
+  "name": "cw-alarms-mobile-app",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter mobile dev",
+    "build": "pnpm --filter mobile build",
+    "ios": "pnpm --filter mobile ios",
+    "cdk": "pnpm --filter infra cdk",
+    "deploy": "pnpm --filter infra deploy"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

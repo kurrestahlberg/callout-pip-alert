@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.tauri/
+target/
+
+# CDK
+cdk.out/
+*.js
+*.d.ts
+!jest.config.js
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# iOS/Android build artifacts
+*.ipa
+*.apk
+*.aab
