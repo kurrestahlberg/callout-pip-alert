@@ -1,4 +1,4 @@
-// Pip-Boy Audio System - Main export
+// Riff-Boy Audio System - Main export
 
 export { AudioEngine, audioEngine } from "./audioEngine";
 

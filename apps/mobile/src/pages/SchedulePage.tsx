@@ -29,7 +29,7 @@ export default function SchedulePage() {
   const onCall: Record<string, OnCallEntry | null> = currentData?.on_call || {};
 
   return (
-    <div className="min-h-full bg-zinc-900 p-4">
+    <div className="h-full bg-zinc-900 p-4 overflow-auto">
       <h1 className="text-xl font-bold text-amber-500 font-mono tracking-wider mb-4">SCHEDULE</h1>
 
       {isLoading && (

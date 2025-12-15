@@ -82,7 +82,8 @@ export function applyADSR(
   duration?: number
 ): void {
   const { attack, decay, sustain, release } = envelope;
-  const now = startTime;
+  // Ensure startTime is never negative
+  const now = Math.max(0, startTime);
 
   // Start at 0
   gainNode.gain.setValueAtTime(0, now);
@@ -95,7 +96,7 @@ export function applyADSR(
 
   // If duration specified, hold sustain then release
   if (duration !== undefined) {
-    const releaseStart = now + duration - release;
+    const releaseStart = Math.max(now, now + duration - release);
     gainNode.gain.setValueAtTime(sustain, releaseStart);
     gainNode.gain.linearRampToValueAtTime(0, now + duration);
   }
@@ -168,7 +169,8 @@ export function playTone(
   envelope: ADSREnvelope = ENVELOPES.sharpClick,
   volume: number = 0.5
 ): void {
-  const now = ctx.currentTime;
+  // Use a small offset to ensure we're always in the future
+  const now = ctx.currentTime + 0.01;
 
   const osc = createOscillator(ctx, waveform, frequency);
   const gain = createGain(ctx, 0);

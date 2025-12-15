@@ -172,27 +172,29 @@ export default function BootScreen({ onComplete }: BootScreenProps) {
                 transition={{ duration: 0.3 }}
               />
             </div>
-            {/* Skip hint */}
+            {/* Hint - changes based on audio state */}
             <motion.p
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.4 }}
+              animate={{ opacity: 0.6 }}
               transition={{ delay: 0.3 }}
-              className="text-amber-500/40 text-xs font-mono text-center mt-3"
+              className={`text-xs font-mono text-center mt-3 ${isInitialized ? "text-amber-500/40" : "text-amber-500"}`}
             >
-              TAP TO SKIP
+              {isInitialized ? "TAP TO SKIP" : "TAP TO ENABLE AUDIO"}
             </motion.p>
           </div>
 
-          {/* Tap to skip overlay - initializes audio on user gesture */}
+          {/* Tap overlay - first tap enables audio, second tap skips */}
           <div
             className="absolute inset-0"
             onClick={async () => {
-              // Initialize audio on first tap (required for mobile)
               if (!isInitialized) {
+                // First tap: initialize audio, boot continues with sounds
                 await initialize();
+              } else {
+                // Second tap: skip boot
+                setBootComplete(true);
+                onComplete();
               }
-              setBootComplete(true);
-              onComplete();
             }}
           />
         </motion.div>

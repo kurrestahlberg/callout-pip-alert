@@ -92,7 +92,8 @@ export default function SettingsPage() {
   const [hasCredentials, setHasCredentials] = useState(false);
 
   // Audio settings
-  const { settings: audioSettings, updateSettings, toggleCategory, setMasterVolume, playUISound } = useAudio();
+  const { settings: audioSettings, updateSettings, toggleCategory, setMasterVolume, playUISound, playAlert, startAmbient, stopAmbient, setAmbientIntensity } = useAudio();
+  const [geigerTestRunning, setGeigerTestRunning] = useState(false);
 
   useEffect(() => {
     setBackends(getBackends());
@@ -190,7 +191,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-full bg-zinc-900 p-4 overflow-auto">
+    <div className="h-full bg-zinc-900 p-4 overflow-auto">
       <h1 className="text-xl font-bold text-amber-500 font-mono tracking-wider mb-4">CONFIG</h1>
 
       {/* Cloud Backends Section */}
@@ -199,7 +200,10 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-amber-500 font-mono">{">"} CLOUD BACKENDS</h2>
             <button
-              onClick={showForm ? resetForm : handleAddClick}
+              onClick={() => {
+                playUISound("click");
+                showForm ? resetForm() : handleAddClick();
+              }}
               className="text-sm text-amber-500 font-mono font-bold"
             >
               {showForm ? "[CANCEL]" : "[+ ADD]"}
@@ -262,7 +266,10 @@ export default function SettingsPage() {
                 />
               </div>
               <button
-                onClick={handleSubmit}
+                onClick={() => {
+                  playUISound("click");
+                  handleSubmit();
+                }}
                 className="w-full py-2 bg-amber-500 text-zinc-900 rounded font-mono font-bold"
               >
                 {editingId ? "SAVE CHANGES" : "ADD BACKEND"}
@@ -299,20 +306,29 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-1 ml-2">
                     {activeId !== backend.id && (
                       <button
-                        onClick={() => handleSelectBackend(backend.id)}
+                        onClick={() => {
+                          playUISound("click");
+                          handleSelectBackend(backend.id);
+                        }}
                         className="text-xs text-green-500 font-mono font-bold px-2 py-1"
                       >
                         [SELECT]
                       </button>
                     )}
                     <button
-                      onClick={() => handleEditClick(backend)}
+                      onClick={() => {
+                        playUISound("click");
+                        handleEditClick(backend);
+                      }}
                       className="text-xs text-amber-500 font-mono font-bold px-2 py-1"
                     >
                       [EDIT]
                     </button>
                     <button
-                      onClick={() => handleDeleteClick(backend)}
+                      onClick={() => {
+                        playUISound("click");
+                        handleDeleteClick(backend);
+                      }}
                       className="text-xs text-red-500 font-mono font-bold px-2 py-1"
                     >
                       [DEL]
@@ -340,7 +356,10 @@ export default function SettingsPage() {
               </p>
             </div>
             <button
-              onClick={handleBiometricToggle}
+              onClick={() => {
+                playUISound(biometricEnabled ? "toggle_off" : "toggle_on");
+                handleBiometricToggle();
+              }}
               className={`relative w-12 h-7 rounded-full transition-colors border-2 ${
                 biometricEnabled ? "bg-green-500/20 border-green-500" : "bg-zinc-900 border-amber-500/30"
               }`}
@@ -364,7 +383,7 @@ export default function SettingsPage() {
           <div>
             <h2 className="text-sm font-bold text-amber-500 font-mono">{">"} AUDIO</h2>
             <p className="text-xs text-amber-500/60 mt-0.5 font-mono">
-              {audioSettings.enabled ? "PIP-BOY AUDIO ENABLED" : "AUDIO DISABLED"}
+              {audioSettings.enabled ? "RIFF-BOY AUDIO ENABLED" : "AUDIO DISABLED"}
             </p>
           </div>
           <button
@@ -483,6 +502,114 @@ export default function SettingsPage() {
                 </button>
               </div>
             </div>
+
+            {/* Test Sounds */}
+            <div className="mt-4 pt-4 border-t border-amber-500/20 space-y-2">
+              <label className="block text-xs font-bold text-amber-500/70 font-mono mb-2">
+                {">"} TEST SOUNDS
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => playUISound("toggle_on")}
+                  className="px-3 py-1.5 bg-zinc-900 border border-amber-500/30 rounded text-amber-500 font-mono text-sm"
+                >
+                  TOGGLE ON
+                </button>
+                <button
+                  onClick={() => playUISound("toggle_off")}
+                  className="px-3 py-1.5 bg-zinc-900 border border-amber-500/30 rounded text-amber-500 font-mono text-sm"
+                >
+                  TOGGLE OFF
+                </button>
+                <button
+                  onClick={() => playUISound("success")}
+                  className="px-3 py-1.5 bg-zinc-900 border border-green-500/30 rounded text-green-500 font-mono text-sm"
+                >
+                  SUCCESS
+                </button>
+                <button
+                  onClick={() => playUISound("error")}
+                  className="px-3 py-1.5 bg-zinc-900 border border-red-500/30 rounded text-red-500 font-mono text-sm"
+                >
+                  ERROR
+                </button>
+                <button
+                  onClick={() => playAlert("critical")}
+                  className="px-3 py-1.5 bg-red-500/20 border border-red-500/50 rounded text-red-500 font-mono text-sm"
+                >
+                  CRITICAL ALARM
+                </button>
+                <button
+                  onClick={() => playAlert("warning")}
+                  className="px-3 py-1.5 bg-amber-500/20 border border-amber-500/50 rounded text-amber-500 font-mono text-sm"
+                >
+                  WARNING
+                </button>
+              </div>
+
+              {/* Geiger Test */}
+              <label className="block text-xs font-bold text-amber-500/70 font-mono mb-2 mt-3">
+                {">"} GEIGER TEST
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    if (geigerTestRunning) {
+                      stopAmbient();
+                      setGeigerTestRunning(false);
+                    } else {
+                      setAmbientIntensity(0.2);
+                      startAmbient();
+                      setGeigerTestRunning(true);
+                    }
+                  }}
+                  className={`px-3 py-1.5 border rounded font-mono text-sm ${geigerTestRunning ? "bg-green-500/20 border-green-500/50 text-green-500" : "bg-zinc-900 border-amber-500/30 text-amber-500"}`}
+                >
+                  LOW (1)
+                </button>
+                <button
+                  onClick={() => {
+                    if (geigerTestRunning) {
+                      stopAmbient();
+                      setGeigerTestRunning(false);
+                    } else {
+                      setAmbientIntensity(0.6);
+                      startAmbient();
+                      setGeigerTestRunning(true);
+                    }
+                  }}
+                  className={`px-3 py-1.5 border rounded font-mono text-sm ${geigerTestRunning ? "bg-green-500/20 border-green-500/50 text-green-500" : "bg-zinc-900 border-amber-500/30 text-amber-500"}`}
+                >
+                  MED (3)
+                </button>
+                <button
+                  onClick={() => {
+                    if (geigerTestRunning) {
+                      stopAmbient();
+                      setGeigerTestRunning(false);
+                    } else {
+                      setAmbientIntensity(1.0);
+                      startAmbient();
+                      setGeigerTestRunning(true);
+                    }
+                  }}
+                  className={`px-3 py-1.5 border rounded font-mono text-sm ${geigerTestRunning ? "bg-green-500/20 border-green-500/50 text-green-500" : "bg-zinc-900 border-red-500/30 text-red-500"}`}
+                >
+                  HIGH (5+)
+                </button>
+                {geigerTestRunning && (
+                  <button
+                    onClick={() => {
+                      stopAmbient();
+                      setGeigerTestRunning(false);
+                    }}
+                    className="px-3 py-1.5 bg-red-500/20 border border-red-500/50 rounded text-red-500 font-mono text-sm"
+                  >
+                    STOP
+                  </button>
+                )}
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -504,7 +631,10 @@ export default function SettingsPage() {
       {/* Sign out or Go to Login */}
       {isAuthenticated ? (
         <button
-          onClick={signOut}
+          onClick={() => {
+            playUISound("click");
+            signOut();
+          }}
           className="w-full py-3 bg-red-500/20 text-red-500 rounded border-2 border-red-500/50 font-mono font-bold flex items-center justify-center gap-2"
         >
           <span className="text-2xl leading-none -mt-1">☢</span>
@@ -512,7 +642,10 @@ export default function SettingsPage() {
         </button>
       ) : (
         <button
-          onClick={() => navigate("login")}
+          onClick={() => {
+            playUISound("click");
+            navigate("login");
+          }}
           className="w-full py-3 bg-amber-500 text-zinc-900 rounded font-mono font-bold"
         >
           GO TO LOGIN

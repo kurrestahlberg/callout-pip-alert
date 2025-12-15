@@ -5,11 +5,8 @@ import {
   PIPBOY_FREQUENCIES,
   ENVELOPES,
   playTone,
-  playFrequencySweep,
   createOscillator,
   createGain,
-  createNoiseBuffer,
-  createBandpassFilter,
 } from "./synthesizer";
 
 // ============================================================
@@ -19,6 +16,7 @@ import {
 export function playTabClick(engine: AudioEngine, volume: number = 0.6): void {
   const ctx = engine.getContext();
   const master = engine.getMasterGain();
+  console.log("[Audio] playTabClick called, ctx:", !!ctx, "master:", !!master);
   if (!ctx || !master) return;
 
   playTone(ctx, master, PIPBOY_FREQUENCIES.terminalClick, 0.03, "square", ENVELOPES.sharpClick, volume);
@@ -35,24 +33,30 @@ export function playButtonClick(engine: AudioEngine, volume: number = 0.5): void
 export function playToggleOn(engine: AudioEngine, volume: number = 0.5): void {
   const ctx = engine.getContext();
   const master = engine.getMasterGain();
+  console.log("[Audio] playToggleOn called, ctx:", !!ctx, "master:", !!master);
   if (!ctx || !master) return;
 
-  // Rising sweep indicates activation
-  playFrequencySweep(ctx, master, 800, 1200, 0.08, "square", volume);
+  // Two quick ascending beeps - longer duration for audibility
+  playTone(ctx, master, 800, 0.08, "square", ENVELOPES.sharpClick, volume);
+  setTimeout(() => {
+    playTone(ctx, master, 1200, 0.08, "square", ENVELOPES.sharpClick, volume);
+  }, 100);
 }
 
 export function playToggleOff(engine: AudioEngine, volume: number = 0.5): void {
   const ctx = engine.getContext();
   const master = engine.getMasterGain();
+  console.log("[Audio] playToggleOff called, ctx:", !!ctx, "master:", !!master);
   if (!ctx || !master) return;
 
-  // Falling sweep indicates deactivation
-  playFrequencySweep(ctx, master, 1200, 600, 0.08, "square", volume);
+  // Single lower beep - longer duration for audibility
+  playTone(ctx, master, 500, 0.12, "square", ENVELOPES.sharpClick, volume);
 }
 
 export function playSuccess(engine: AudioEngine, volume: number = 0.5): void {
   const ctx = engine.getContext();
   const master = engine.getMasterGain();
+  console.log("[Audio] playSuccess called, ctx:", !!ctx, "master:", !!master);
   if (!ctx || !master) return;
 
   // Two-tone ascending (musical fifth)
@@ -68,6 +72,7 @@ export function playSuccess(engine: AudioEngine, volume: number = 0.5): void {
 export function playError(engine: AudioEngine, volume: number = 0.6): void {
   const ctx = engine.getContext();
   const master = engine.getMasterGain();
+  console.log("[Audio] playError called, ctx:", !!ctx, "master:", !!master);
   if (!ctx || !master) return;
 
   // Low buzzer
@@ -126,12 +131,14 @@ export interface AlertController {
 export function playRadiationAlarm(engine: AudioEngine, volume: number = 0.8): AlertController {
   const ctx = engine.getContext();
   const master = engine.getMasterGain();
+  console.log("[Audio] playRadiationAlarm called, ctx:", !!ctx, "master:", !!master);
 
   if (!ctx || !master) {
     return { stop: () => {} };
   }
 
-  const now = ctx.currentTime;
+  // Use small offset to ensure we're in the future
+  const now = ctx.currentTime + 0.01;
 
   // Main oscillator (carrier) - warbling alarm
   const carrier = createOscillator(ctx, "square", PIPBOY_FREQUENCIES.alarmBase);
@@ -191,6 +198,7 @@ export function playRadiationAlarm(engine: AudioEngine, volume: number = 0.8): A
 export function playWarningTone(engine: AudioEngine, volume: number = 0.6): void {
   const ctx = engine.getContext();
   const master = engine.getMasterGain();
+  console.log("[Audio] playWarningTone called, ctx:", !!ctx, "master:", !!master);
   if (!ctx || !master) return;
 
   // Two short pulses
@@ -220,35 +228,106 @@ export interface AmbientController {
   setIntensity: (level: number) => void;
 }
 
-export function createGeigerAmbient(engine: AudioEngine, baseVolume: number = 0.15): AmbientController {
+export function createGeigerAmbient(engine: AudioEngine, baseVolume: number = 1.2): AmbientController {
   let running = false;
   let intensity = 0.5;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  const scheduleClick = () => {
-    if (!running) return;
-
+  const playGeigerClick = () => {
     const ctx = engine.getContext();
     const master = engine.getMasterGain();
     if (!ctx || !master) return;
 
-    // Random Geiger click
-    const buffer = createNoiseBuffer(ctx, 0.005);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
+    const now = ctx.currentTime;
 
-    const filter = createBandpassFilter(ctx, PIPBOY_FREQUENCIES.geigerClick, 10);
-    const gain = createGain(ctx, baseVolume * intensity);
+    // Very short click - like electrical discharge (2-8ms)
+    const duration = 0.002 + intensity * 0.006;
+    const bufferSize = Math.floor(ctx.sampleRate * duration);
 
-    source.connect(filter);
-    filter.connect(gain);
+    // Create impulse-like noise buffer (sharp attack, instant decay)
+    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+
+    for (let i = 0; i < bufferSize; i++) {
+      // Sharp impulse with very fast decay - like a spark
+      const envelope = Math.exp(-i / (bufferSize * 0.1));
+      let sample = (Math.random() * 2 - 1);
+
+      // At high intensity, add crackling distortion
+      if (intensity > 0.7) {
+        sample = Math.sign(sample) * Math.pow(Math.abs(sample), 0.5);
+      }
+      data[i] = sample * envelope;
+    }
+
+    const noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = noiseBuffer;
+
+    // Bright, sharp filter - Geiger clicks are quite bright/crispy
+    const filter = ctx.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.setValueAtTime(1500 + Math.random() * 1000, now);
+    filter.Q.setValueAtTime(0.7, now);
+
+    // Add presence/bite
+    const presence = ctx.createBiquadFilter();
+    presence.type = "peaking";
+    presence.frequency.setValueAtTime(4000 + Math.random() * 2000, now);
+    presence.Q.setValueAtTime(2, now);
+    presence.gain.setValueAtTime(8, now);
+
+    const gain = ctx.createGain();
+    // Sharp, loud click
+    const volume = baseVolume * (0.8 + intensity * 1.5);
+    gain.gain.setValueAtTime(volume, now);
+    // Very fast decay
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    noiseSource.connect(filter);
+    filter.connect(presence);
+    presence.connect(gain);
     gain.connect(master);
 
-    source.start();
+    noiseSource.start(now);
 
-    // Schedule next click (random interval based on intensity)
-    const minInterval = 2000 * (1 - intensity * 0.5);
-    const maxInterval = 8000 * (1 - intensity * 0.5);
+    // At high intensity, sometimes add a secondary click (double-click effect)
+    if (intensity > 0.6 && Math.random() < intensity * 0.4) {
+      const delay = 0.01 + Math.random() * 0.02;
+      setTimeout(() => {
+        const ctx2 = engine.getContext();
+        const master2 = engine.getMasterGain();
+        if (!ctx2 || !master2) return;
+
+        const now2 = ctx2.currentTime;
+        const noise2 = ctx2.createBufferSource();
+        noise2.buffer = noiseBuffer;
+
+        const filter2 = ctx2.createBiquadFilter();
+        filter2.type = "highpass";
+        filter2.frequency.setValueAtTime(2000 + Math.random() * 1500, now2);
+
+        const gain2 = ctx2.createGain();
+        gain2.gain.setValueAtTime(volume * 0.6, now2);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now2 + duration * 0.7);
+
+        noise2.connect(filter2);
+        filter2.connect(gain2);
+        gain2.connect(master2);
+        noise2.start(now2);
+      }, delay * 1000);
+    }
+  };
+
+  const scheduleClick = () => {
+    if (!running) return;
+
+    playGeigerClick();
+
+    // Schedule next click - more frequent with higher intensity
+    // At intensity 0.2 (1 critical): 200-500ms
+    // At intensity 1.0 (5+ criticals): 30-80ms (almost continuous rattling)
+    const minInterval = 30 + 170 * (1 - intensity);
+    const maxInterval = 80 + 420 * (1 - intensity);
     const nextInterval = minInterval + Math.random() * (maxInterval - minInterval);
     timeoutId = setTimeout(scheduleClick, nextInterval);
   };
@@ -256,10 +335,14 @@ export function createGeigerAmbient(engine: AudioEngine, baseVolume: number = 0.
   return {
     start: () => {
       if (running) return;
+      console.log("[Audio] Geiger ambient started");
       running = true;
       scheduleClick();
     },
     stop: () => {
+      if (running) {
+        console.log("[Audio] Geiger ambient stopped");
+      }
       running = false;
       if (timeoutId) {
         clearTimeout(timeoutId);
@@ -268,11 +351,12 @@ export function createGeigerAmbient(engine: AudioEngine, baseVolume: number = 0.
     },
     setIntensity: (level: number) => {
       intensity = Math.max(0, Math.min(1, level));
+      console.log("[Audio] Geiger intensity:", intensity);
     },
   };
 }
 
-export function createElectricalHum(engine: AudioEngine, baseVolume: number = 0.05): AmbientController {
+export function createElectricalHum(engine: AudioEngine, baseVolume: number = 0.15): AmbientController {
   let running = false;
   let oscillator: OscillatorNode | null = null;
   let gainNode: GainNode | null = null;

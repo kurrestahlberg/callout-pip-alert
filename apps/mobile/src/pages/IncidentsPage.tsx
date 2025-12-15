@@ -78,7 +78,7 @@ export default function IncidentsPage() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const { navigate } = useNavigation();
   const queryClient = useQueryClient();
-  const { playAlert, settings } = useAudio();
+  const { playAlert, playUISound, settings, startAmbient, stopAmbient, setAmbientIntensity, isInitialized } = useAudio();
 
   const currentTab = FILTER_TABS.find(t => t.key === activeTab)!;
 
@@ -132,6 +132,28 @@ export default function IncidentsPage() {
     const items: Incident[] = data?.incidents || [];
     return items.filter((i) => i.state === "triggered" && i.severity === "critical").length;
   }, [data?.incidents]);
+
+  // Geiger ambient based on critical unacked count
+  useEffect(() => {
+    if (!isInitialized || !settings.categories.ambient) {
+      stopAmbient();
+      return;
+    }
+
+    if (unackedCriticalCount > 0) {
+      // Start ambient and set intensity based on count
+      // More criticals = more frequent clicks (max intensity at 5+ criticals)
+      const intensity = Math.min(1, unackedCriticalCount / 5);
+      startAmbient();
+      setAmbientIntensity(intensity);
+    } else {
+      stopAmbient();
+    }
+
+    return () => {
+      stopAmbient();
+    };
+  }, [unackedCriticalCount, isInitialized, settings.categories.ambient, startAmbient, stopAmbient, setAmbientIntensity]);
 
   // Count alarms (triggered + acked)
   const alarmsCount = useMemo(() => {
@@ -193,7 +215,7 @@ export default function IncidentsPage() {
   return (
     <div
       ref={containerRef}
-      className="min-h-full bg-zinc-900 overflow-auto"
+      className="h-full bg-zinc-900 overflow-auto"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -226,7 +248,12 @@ export default function IncidentsPage() {
           {FILTER_TABS.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                if (activeTab !== tab.key) {
+                  playUISound("click");
+                  setActiveTab(tab.key);
+                }
+              }}
               className={`flex-1 px-3 py-1.5 rounded text-sm font-bold font-mono whitespace-nowrap transition-colors border ${
                 activeTab === tab.key
                   ? "bg-amber-500 text-zinc-900 border-amber-500"
@@ -251,7 +278,10 @@ export default function IncidentsPage() {
             <IncidentCard
               key={incident.incident_id}
               incident={incident}
-              onClick={() => navigate("incident-detail", { incidentId: incident.incident_id })}
+              onClick={() => {
+                playUISound("click");
+                navigate("incident-detail", { incidentId: incident.incident_id });
+              }}
             />
           ))}
         </AnimatePresence>

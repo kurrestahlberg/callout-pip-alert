@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { teamsApi } from "../lib/api";
+import { useAudio } from "../hooks/useAudio";
 
 interface Team {
   team_id: string;
@@ -13,6 +14,7 @@ export default function TeamPage() {
   const [newTeamName, setNewTeamName] = useState("");
   const [newAwsAccounts, setNewAwsAccounts] = useState("");
   const queryClient = useQueryClient();
+  const { playUISound } = useAudio();
 
   const { data, isLoading } = useQuery({
     queryKey: ["teams"],
@@ -38,11 +40,14 @@ export default function TeamPage() {
   const teams: Team[] = data?.teams || [];
 
   return (
-    <div className="min-h-full bg-zinc-900 p-4">
+    <div className="h-full bg-zinc-900 p-4 overflow-auto">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-amber-500 font-mono tracking-wider">TEAMS</h1>
         <button
-          onClick={() => setShowCreate(!showCreate)}
+          onClick={() => {
+            playUISound("click");
+            setShowCreate(!showCreate);
+          }}
           className="text-amber-500 font-mono font-bold"
         >
           {showCreate ? "[CANCEL]" : "[+ NEW]"}
@@ -67,7 +72,10 @@ export default function TeamPage() {
             className="w-full px-3 py-2 bg-zinc-900 border-2 border-amber-500/30 rounded text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 mb-3 text-base"
           />
           <button
-            onClick={() => createMutation.mutate()}
+            onClick={() => {
+              playUISound("click");
+              createMutation.mutate();
+            }}
             disabled={!newTeamName || createMutation.isPending}
             className="w-full py-2 bg-amber-500 text-zinc-900 rounded font-mono font-bold disabled:opacity-50"
           >

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, QueryClient } from "@tanstack/react-query";
 import { incidentsApi } from "../lib/api";
 import { useNavigation } from "../lib/navigation";
+import { useAudio } from "../hooks/useAudio";
 
 // Helper to get cached incident data
 function getCachedIncident(queryClient: QueryClient, incidentId: string) {
@@ -34,6 +35,7 @@ interface IncidentDetailPageProps {
 export default function IncidentDetailPage({ incidentId }: IncidentDetailPageProps) {
   const { goBack } = useNavigation();
   const queryClient = useQueryClient();
+  const { playUISound } = useAudio();
 
   const { data, isLoading } = useQuery({
     queryKey: ["incident", incidentId],
@@ -71,13 +73,13 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
 
   if (isLoading) {
     return (
-      <div className="min-h-full bg-zinc-900 p-4 text-center text-amber-500 font-mono">{">"} LOADING...</div>
+      <div className="h-full bg-zinc-900 p-4 text-center text-amber-500 font-mono">{">"} LOADING...</div>
     );
   }
 
   if (!incident) {
     return (
-      <div className="min-h-full bg-zinc-900 p-4 text-center text-red-500 font-mono">[ERROR] INCIDENT NOT FOUND</div>
+      <div className="h-full bg-zinc-900 p-4 text-center text-red-500 font-mono">[ERROR] INCIDENT NOT FOUND</div>
     );
   }
 
@@ -88,10 +90,13 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
   };
 
   return (
-    <div className="min-h-full bg-zinc-900 p-4 overflow-auto">
+    <div className="h-full bg-zinc-900 p-4 overflow-auto">
       {/* Back button */}
       <button
-        onClick={goBack}
+        onClick={() => {
+          playUISound("click");
+          goBack();
+        }}
         className="text-amber-500 font-mono font-bold mb-4 flex items-center gap-1"
       >
         {"<"} BACK
@@ -110,7 +115,10 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
 
       {/* Status and actions - tap to go back */}
       <div
-        onClick={goBack}
+        onClick={() => {
+          playUISound("click");
+          goBack();
+        }}
         className="bg-zinc-800 rounded border-2 border-amber-500/30 p-4 mb-6 cursor-pointer active:bg-zinc-700"
       >
         <div className="flex items-center justify-between mb-4">
@@ -134,7 +142,10 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
       {incident.state === "triggered" && (
         <div className="mb-6">
           <button
-            onClick={() => ackMutation.mutate()}
+            onClick={() => {
+              playUISound("click");
+              ackMutation.mutate();
+            }}
             disabled={ackMutation.isPending}
             className="w-full py-3 bg-amber-500/20 text-amber-500 rounded border-2 border-amber-500 font-mono font-bold disabled:opacity-50"
           >
@@ -152,7 +163,10 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
             </p>
           </div>
           <button
-            onClick={() => unackMutation.mutate()}
+            onClick={() => {
+              playUISound("click");
+              unackMutation.mutate();
+            }}
             disabled={unackMutation.isPending}
             className="w-full py-2 bg-zinc-800 text-amber-500/70 rounded-b border border-amber-500/30 font-mono text-sm disabled:opacity-50"
           >
