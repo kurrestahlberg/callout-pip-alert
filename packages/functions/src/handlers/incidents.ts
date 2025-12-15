@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
-import { docClient, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "../lib/dynamo.js";
+import { docClient, GetCommand, PutCommand, QueryCommand, UpdateCommand, ScanCommand } from "../lib/dynamo.js";
 import { jsonResponse, getUserIdFromEvent, Incident, TimelineEntry } from "../types/index.js";
 
 const INCIDENTS_TABLE = process.env.INCIDENTS_TABLE!;
@@ -40,13 +40,10 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
           })
         );
       } else {
-        // Scan all (not ideal but ok for MVP)
+        // Scan all incidents (MVP: no team filtering)
         result = await docClient.send(
-          new QueryCommand({
+          new ScanCommand({
             TableName: INCIDENTS_TABLE,
-            IndexName: "team-state-index",
-            KeyConditionExpression: "team_id = :tid",
-            ExpressionAttributeValues: { ":tid": "default" }, // TODO: filter by user's teams
           })
         );
       }

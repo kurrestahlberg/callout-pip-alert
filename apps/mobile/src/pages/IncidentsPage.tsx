@@ -15,16 +15,22 @@ interface Incident {
   team_id: string;
 }
 
-const stateColors: Record<IncidentState, string> = {
-  triggered: "bg-red-500",
-  acked: "bg-yellow-500",
-  resolved: "bg-green-500",
+const severityDotColors: Record<string, string> = {
+  critical: "bg-red-500",
+  warning: "bg-amber-500",
+  info: "bg-blue-500",
 };
 
-const severityColors: Record<string, string> = {
+const severityTextColors: Record<string, string> = {
   critical: "text-red-600",
-  warning: "text-yellow-600",
+  warning: "text-amber-600",
   info: "text-blue-600",
+};
+
+const stateBadgeColors: Record<IncidentState, string> = {
+  triggered: "bg-red-100 text-red-700",
+  acked: "bg-amber-100 text-amber-700",
+  resolved: "bg-green-100 text-green-700",
 };
 
 export default function IncidentsPage() {
@@ -99,16 +105,16 @@ export default function IncidentsPage() {
             >
               <div className="flex items-start gap-3">
                 <div
-                  className={`w-3 h-3 rounded-full mt-1.5 ${stateColors[incident.state]}`}
+                  className={`w-3 h-3 rounded-full mt-1.5 ${severityDotColors[incident.severity]}`}
                 />
                 <div className="flex-1 min-w-0">
-                  <h3 className={`font-medium truncate ${severityColors[incident.severity]}`}>
+                  <h3 className={`font-medium truncate ${severityTextColors[incident.severity]}`}>
                     {incident.alarm_name}
                   </h3>
                   <p className="text-sm text-gray-500">
                     {new Date(incident.triggered_at).toLocaleString()}
                   </p>
-                  <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                  <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full ${stateBadgeColors[incident.state]}`}>
                     {incident.state}
                   </span>
                 </div>
