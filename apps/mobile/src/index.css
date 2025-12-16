@@ -125,3 +125,33 @@ body {
     0 0 5px rgba(245, 158, 11, 0.3),
     inset 0 0 5px rgba(245, 158, 11, 0.1);
 }
+
+/* Toast slide-in animation */
+@keyframes slide-in {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* Demo mode pulsing badge */
+@keyframes demo-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.animate-demo-pulse {
+  animation: demo-pulse 2s ease-in-out infinite;
+}

@@ -1,4 +1,5 @@
 import { getActiveBackend } from "./backends";
+import { isDemoMode, demoIncidentsApi } from "./demo";
 
 function getApiUrl(): string {
   const backend = getActiveBackend();
@@ -44,25 +45,39 @@ export const devicesApi = {
     fetchWithAuth(`/devices/${encodeURIComponent(token)}`, { method: "DELETE" }),
 };
 
-// Incidents
+// Incidents - intercepts demo mode
 export const incidentsApi = {
   list: (params?: { state?: string; team_id?: string }) => {
+    if (isDemoMode()) return demoIncidentsApi.list(params);
     const query = new URLSearchParams(params as Record<string, string>).toString();
     return fetchWithAuth(`/incidents${query ? `?${query}` : ""}`);
   },
-  get: (id: string) => fetchWithAuth(`/incidents/${id}`),
-  ack: (id: string) => fetchWithAuth(`/incidents/${id}/ack`, { method: "POST" }),
-  unack: (id: string) => fetchWithAuth(`/incidents/${id}/unack`, { method: "POST" }),
-  resolve: (id: string, note?: string) =>
-    fetchWithAuth(`/incidents/${id}/resolve`, {
+  get: (id: string) => {
+    if (isDemoMode()) return demoIncidentsApi.get(id);
+    return fetchWithAuth(`/incidents/${id}`);
+  },
+  ack: (id: string) => {
+    if (isDemoMode()) return demoIncidentsApi.ack(id);
+    return fetchWithAuth(`/incidents/${id}/ack`, { method: "POST" });
+  },
+  unack: (id: string) => {
+    if (isDemoMode()) return demoIncidentsApi.unack(id);
+    return fetchWithAuth(`/incidents/${id}/unack`, { method: "POST" });
+  },
+  resolve: (id: string, note?: string) => {
+    if (isDemoMode()) return demoIncidentsApi.resolve(id, note);
+    return fetchWithAuth(`/incidents/${id}/resolve`, {
       method: "POST",
       body: JSON.stringify({ note }),
-    }),
-  reassign: (id: string, userId: string) =>
-    fetchWithAuth(`/incidents/${id}/reassign`, {
+    });
+  },
+  reassign: (id: string, userId: string) => {
+    if (isDemoMode()) return demoIncidentsApi.reassign(id, userId);
+    return fetchWithAuth(`/incidents/${id}/reassign`, {
       method: "POST",
       body: JSON.stringify({ user_id: userId }),
-    }),
+    });
+  },
 };
 
 // Teams

@@ -5,6 +5,7 @@ import { incidentsApi } from "../lib/api";
 import { useNavigation } from "../lib/navigation";
 import { useAudio } from "../hooks/useAudio";
 import { useCriticalAlertDetection } from "../hooks/useCriticalAlertDetection";
+import { useDemoMode } from "../hooks/useDemoMode";
 
 type IncidentState = "triggered" | "acked" | "resolved";
 type Severity = "critical" | "warning" | "info";
@@ -79,6 +80,7 @@ export default function IncidentsPage() {
   const { navigate } = useNavigation();
   const queryClient = useQueryClient();
   const { playAlert, playUISound, settings, startAmbient, stopAmbient, setAmbientIntensity, isInitialized } = useAudio();
+  const { isEnabled: demoEnabled, isRunning: demoRunning } = useDemoMode();
 
   const currentTab = FILTER_TABS.find(t => t.key === activeTab)!;
 
@@ -235,7 +237,14 @@ export default function IncidentsPage() {
       {/* Header */}
       <div className="bg-zinc-800 border-b-2 border-amber-500/30 px-4 py-3 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-2xl font-bold text-amber-500 font-mono tracking-wider text-glow">ALERTS</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-amber-500 font-mono tracking-wider text-glow">ALERTS</h1>
+            {demoEnabled && (
+              <span className={`text-xs px-2 py-0.5 bg-amber-500/20 border border-amber-500/50 rounded text-amber-500 font-mono font-bold ${demoRunning ? 'animate-demo-pulse' : ''}`}>
+                DEMO
+              </span>
+            )}
+          </div>
           {unackedCriticalCount > 0 && (
             <span className="bg-red-500/20 text-red-500 text-sm font-bold font-mono px-2 py-1 rounded border border-red-500/50 pulse-glow-red text-glow-red flex items-center gap-2">
               {unackedCriticalCount} <span className="text-xl leading-none -mt-0.5">☢</span>

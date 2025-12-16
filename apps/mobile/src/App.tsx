@@ -3,8 +3,10 @@ import { useAuth } from "./lib/auth";
 import { setTokenGetter } from "./lib/api";
 import { NavigationProvider, useNavigation, Page } from "./lib/navigation";
 import { AudioProvider } from "./hooks/useAudio";
+import { DemoModeProvider, useDemoMode } from "./hooks/useDemoMode";
 import Layout from "./components/Layout";
 import BootScreen from "./components/BootScreen";
+import Toast from "./components/Toast";
 import LoginPage from "./pages/LoginPage";
 import IncidentsPage from "./pages/IncidentsPage";
 import IncidentDetailPage from "./pages/IncidentDetailPage";
@@ -87,6 +89,12 @@ function AppContent() {
   );
 }
 
+// Toast container that uses demo mode context
+function ToastContainer() {
+  const { toasts, dismissToast } = useDemoMode();
+  return <Toast toasts={toasts} onDismiss={dismissToast} />;
+}
+
 function App() {
   const { getToken } = useAuth();
   const [bootComplete, setBootComplete] = useState(false);
@@ -97,13 +105,16 @@ function App() {
 
   return (
     <AudioProvider>
-      {!bootComplete ? (
-        <BootScreen onComplete={() => setBootComplete(true)} />
-      ) : (
-        <NavigationProvider>
-          <AppContent />
-        </NavigationProvider>
-      )}
+      <DemoModeProvider>
+        {!bootComplete ? (
+          <BootScreen onComplete={() => setBootComplete(true)} />
+        ) : (
+          <NavigationProvider>
+            <AppContent />
+            <ToastContainer />
+          </NavigationProvider>
+        )}
+      </DemoModeProvider>
     </AudioProvider>
   );
 }

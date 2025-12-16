@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../lib/auth";
 import { useNavigation } from "../lib/navigation";
 import { useAudio } from "../hooks/useAudio";
+import { useDemoMode } from "../hooks/useDemoMode";
+import { startDemoSequence, stopDemoSequence, resetDemoCounter } from "../lib/demo";
 import {
   CloudBackend,
   getBackends,
@@ -94,6 +96,20 @@ export default function SettingsPage() {
   // Audio settings
   const { settings: audioSettings, updateSettings, toggleCategory, setMasterVolume, playUISound, playAlert, startAmbient, stopAmbient, setAmbientIntensity } = useAudio();
   const [geigerTestRunning, setGeigerTestRunning] = useState(false);
+
+  // Demo mode
+  const {
+    isEnabled: demoEnabled,
+    isRunning: demoRunning,
+    setEnabled: setDemoEnabled,
+    startDemo,
+    stopDemo,
+    resetDemo,
+    addIncident,
+    ackIncident,
+    showToast,
+    incidents: demoIncidents,
+  } = useDemoMode();
 
   useEffect(() => {
     setBackends(getBackends());
@@ -188,6 +204,43 @@ export default function SettingsPage() {
     setActiveBackendId(id);
     setActiveId(id);
     window.location.reload();
+  };
+
+  const handleDemoToggle = () => {
+    const newValue = !demoEnabled;
+    setDemoEnabled(newValue);
+    playUISound(newValue ? "toggle_on" : "toggle_off");
+  };
+
+  const handleStartDemo = () => {
+    playUISound("click");
+    startDemo();
+    resetDemoCounter();
+    startDemoSequence({
+      addIncident,
+      ackIncident,
+      showToast,
+      playAlert: (severity) => {
+        playAlert(severity);
+      },
+      onComplete: () => {
+        stopDemo();
+      },
+      getIncidents: () => demoIncidents,
+    });
+  };
+
+  const handleStopDemo = () => {
+    playUISound("click");
+    stopDemoSequence();
+    stopDemo();
+  };
+
+  const handleResetDemo = () => {
+    playUISound("click");
+    stopDemoSequence();
+    resetDemo();
+    resetDemoCounter();
   };
 
   return (
@@ -609,6 +662,75 @@ export default function SettingsPage() {
                   </button>
                 )}
               </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Demo Mode */}
+      <div className="bg-zinc-800 rounded border-2 border-amber-500/30 p-4 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h2 className="text-sm font-bold text-amber-500 font-mono">{">"} DEMO MODE</h2>
+            <p className="text-xs text-amber-500/60 mt-0.5 font-mono">
+              {demoEnabled ? (demoRunning ? "DEMO RUNNING" : "DEMO DATA ACTIVE") : "SHOWCASE FEATURES"}
+            </p>
+          </div>
+          <button
+            onClick={handleDemoToggle}
+            className={`relative w-12 h-7 rounded-full transition-colors border-2 ${
+              demoEnabled ? "bg-amber-500/20 border-amber-500" : "bg-zinc-900 border-amber-500/30"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${
+                demoEnabled ? "translate-x-5 bg-amber-500" : "bg-amber-500/50"
+              }`}
+            />
+          </button>
+        </div>
+
+        {demoEnabled && (
+          <>
+            {/* Warning box */}
+            <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded mb-3">
+              <p className="text-xs text-amber-500/80 font-mono text-center">
+                ⚠ DEMO DATA ONLY — NOT CONNECTED TO REAL BACKEND
+              </p>
+            </div>
+
+            {/* Demo status */}
+            {demoIncidents.length > 0 && (
+              <div className="p-2 bg-zinc-900 border border-amber-500/20 rounded mb-3">
+                <p className="text-xs text-amber-500/70 font-mono text-center">
+                  ACTIVE INCIDENTS: {demoIncidents.filter(i => i.state === "triggered").length} / {demoIncidents.length}
+                </p>
+              </div>
+            )}
+
+            {/* Demo controls */}
+            <div className="flex gap-2">
+              {!demoRunning ? (
+                <button
+                  onClick={handleStartDemo}
+                  className="flex-1 py-2 bg-amber-500/20 text-amber-500 rounded border border-amber-500/50 font-mono text-sm font-bold"
+                >
+                  START DEMO
+                </button>
+              ) : (
+                <button
+                  onClick={handleStopDemo}
+                  className="flex-1 py-2 bg-red-500/20 text-red-500 rounded border border-red-500/50 font-mono text-sm font-bold"
+                >
+                  STOP DEMO
+                </button>
+              )}
+              <button
+                onClick={handleResetDemo}
+                className="flex-1 py-2 bg-zinc-900 text-amber-500/70 rounded border border-amber-500/30 font-mono text-sm font-bold"
+              >
+                RESET DEMO
+              </button>
             </div>
           </>
         )}
