@@ -12,7 +12,6 @@
 		1AC2BA3222112E52B6526846 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E0B93B718434403C4D318AC7 /* Metal.framework */; };
 		6189D6F1EA771AEF529A0C98 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1714BEC9E96A91810A49D208 /* MetalKit.framework */; };
 		8DAF8F310364CFDFA131B09F /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C10C0592774892C2F18430BA /* libapp.a */; };
-		A219A732DA8587A349F36D72 /* libapp.a in Resources */ = {isa = PBXBuildFile; fileRef = 1217BBA797637E8F43848D36 /* libapp.a */; };
 		A55EE16269C39B9AFA985D18 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F9A2EEA6FBD37E9E67D27835 /* CoreGraphics.framework */; };
 		B3903BD3F32FF77676C42AC0 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83CBBF24CEC3ADB5595EA24C /* WebKit.framework */; };
 		CA2B61364055E9EEEF2EB371 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F92176EEB07ED815FD79FFBA /* QuartzCore.framework */; };
@@ -227,7 +226,6 @@
 				DB1EE932B366C88371CCF69C /* Assets.xcassets in Resources */,
 				FC2464E9251091FC24E58422 /* LaunchScreen.storyboard in Resources */,
 				112D0BAB8DF57F8B380BBEC4 /* assets in Resources */,
-				A219A732DA8587A349F36D72 /* libapp.a in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

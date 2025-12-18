@@ -105,6 +105,20 @@ export class AppStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    const scoresTable = new dynamodb.Table(this, "ScoresTable", {
+      tableName: "cw-alarms-scores",
+      partitionKey: { name: "user_id", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // GSI for leaderboard queries (sorted by high_score)
+    scoresTable.addGlobalSecondaryIndex({
+      indexName: "leaderboard-index",
+      partitionKey: { name: "game_type", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "high_score", type: dynamodb.AttributeType.NUMBER },
+    });
+
     // ==================== SNS TOPIC FOR ALARMS ====================
     const alarmsTopic = new sns.Topic(this, "AlarmsTopic", {
       topicName: "cw-alarms-topic",
@@ -125,7 +139,9 @@ export class AppStack extends cdk.Stack {
       SCHEDULES_TABLE: schedulesTable.tableName,
       INCIDENTS_TABLE: incidentsTable.tableName,
       DEVICES_TABLE: devicesTable.tableName,
+      SCORES_TABLE: scoresTable.tableName,
       APNS_SECRET_ARN: apnsSecret.secretArn,
+      GAME_MODE_ENABLED: "true", // Set to "false" in production
     };
 
     // Devices handler
@@ -203,12 +219,14 @@ export class AppStack extends cdk.Stack {
       entry: path.join(functionsPath, "handlers/incident-streams.ts"),
       environment: {
         DEVICES_TABLE: devicesTable.tableName,
+        INCIDENTS_TABLE: incidentsTable.tableName,
         APNS_SECRET_ARN: apnsSecret.secretArn,
       },
       timeout: cdk.Duration.seconds(30),
       bundling: bundlingOptions,
     });
     devicesTable.grantReadData(incidentStreamsHandler);
+    incidentsTable.grantReadData(incidentStreamsHandler);
     apnsSecret.grantRead(incidentStreamsHandler);
 
     // Connect streams to Lambda
@@ -237,6 +255,20 @@ export class AppStack extends cdk.Stack {
     teamsTable.grantReadWriteData(demoHandler);
     schedulesTable.grantReadWriteData(demoHandler);
     alarmsTopic.grantPublish(demoHandler);
+
+    // Game handler (for game mode)
+    const gameHandler = new nodejs.NodejsFunction(this, "GameHandler", {
+      functionName: "cw-alarms-game",
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: "handler",
+      entry: path.join(functionsPath, "handlers/game.ts"),
+      environment: commonEnv,
+      timeout: cdk.Duration.seconds(30),
+      reservedConcurrentExecutions: 2,
+      bundling: bundlingOptions,
+    });
+    scoresTable.grantReadWriteData(gameHandler);
+    incidentsTable.grantReadWriteData(gameHandler);
 
     // ==================== API GATEWAY ====================
     const httpApi = new apigateway.HttpApi(this, "HttpApi", {
@@ -383,6 +415,56 @@ export class AppStack extends cdk.Stack {
       path: "/demo/reset",
       methods: [apigateway.HttpMethod.POST],
       integration: new apigatewayIntegrations.HttpLambdaIntegration("DemoReset", demoHandler),
+      authorizer,
+    });
+
+    // Game routes
+    httpApi.addRoutes({
+      path: "/game/config",
+      methods: [apigateway.HttpMethod.GET],
+      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameConfig", gameHandler),
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/game/start",
+      methods: [apigateway.HttpMethod.POST],
+      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameStart", gameHandler),
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/game/end",
+      methods: [apigateway.HttpMethod.POST],
+      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameEnd", gameHandler),
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/game/session",
+      methods: [apigateway.HttpMethod.GET],
+      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameSession", gameHandler),
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/game/trigger",
+      methods: [apigateway.HttpMethod.POST],
+      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameTrigger", gameHandler),
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/game/ack/{id}",
+      methods: [apigateway.HttpMethod.POST],
+      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameAck", gameHandler),
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/game/incidents",
+      methods: [apigateway.HttpMethod.GET],
+      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameIncidents", gameHandler),
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/game/leaderboard",
+      methods: [apigateway.HttpMethod.GET],
+      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameLeaderboard", gameHandler),
       authorizer,
     });
 

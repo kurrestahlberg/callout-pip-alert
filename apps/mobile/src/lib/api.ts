@@ -144,3 +144,27 @@ export const cloudDemoApi = {
       method: "POST",
     }),
 };
+
+// Game Mode API
+export const gameApi = {
+  getConfig: () => fetchWithAuth("/game/config"),
+  getSession: () => fetchWithAuth("/game/session"),
+  start: (displayName?: string) =>
+    fetchWithAuth("/game/start", {
+      method: "POST",
+      body: JSON.stringify({ display_name: displayName }),
+    }),
+  end: () => fetchWithAuth("/game/end", { method: "POST" }),
+  trigger: (title: string, severity: string, displayName?: string) =>
+    fetchWithAuth("/game/trigger", {
+      method: "POST",
+      body: JSON.stringify({ title, severity, display_name: displayName }),
+    }),
+  ack: (incidentId: string, displayName?: string) =>
+    fetchWithAuth(`/game/ack/${incidentId}`, {
+      method: "POST",
+      body: JSON.stringify({ display_name: displayName }),
+    }),
+  getIncidents: () => fetchWithAuth("/game/incidents"),
+  getLeaderboard: () => fetchWithAuth("/game/leaderboard"),
+};

@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient, QueryClient } from "@tanstack/react-query";
-import { incidentsApi } from "../lib/api";
+import { incidentsApi, gameApi } from "../lib/api";
 import { useNavigation } from "../lib/navigation";
 import { useAudio } from "../hooks/useAudio";
 import { useAuth } from "../lib/auth";
@@ -26,8 +27,12 @@ interface Incident {
   triggered_at: number;
   acked_at?: number;
   acked_by?: string;
+  acked_by_name?: string;
   resolved_at?: number;
   timeline: TimelineEntry[];
+  game?: boolean;
+  triggered_by_name?: string;
+  point_multiplier?: number;
 }
 
 interface IncidentDetailPageProps {
@@ -40,6 +45,7 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
   const { playUISound } = useAudio();
   const { user } = useAuth();
   const username = user?.getUsername() || undefined;
+  const [gameAckResult, setGameAckResult] = useState<{ success: boolean; points: number; message: string } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["incident", incidentId],
@@ -53,11 +59,26 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
     refetchInterval: 5000,
   });
 
+  const incident: Incident | undefined = data?.incident;
+  const isGameIncident = incident?.game === true;
+
+  // Regular ack mutation for non-game incidents
   const ackMutation = useMutation({
     mutationFn: () => incidentsApi.ack(incidentId!, username),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["incident", incidentId] });
       queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    },
+  });
+
+  // Game ack mutation - uses game API and tracks points
+  const gameAckMutation = useMutation({
+    mutationFn: () => gameApi.ack(incidentId!, username),
+    onSuccess: (result) => {
+      setGameAckResult(result);
+      queryClient.invalidateQueries({ queryKey: ["incident", incidentId] });
+      queryClient.invalidateQueries({ queryKey: ["incidents"] });
+      queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
     },
   });
 
@@ -68,8 +89,6 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
       queryClient.invalidateQueries({ queryKey: ["incidents"] });
     },
   });
-
-  const incident: Incident | undefined = data?.incident;
 
   if (!incidentId) {
     return null;
@@ -145,16 +164,51 @@ export default function IncidentDetailPage({ incidentId }: IncidentDetailPagePro
       {/* Action button - only acknowledge, resolve happens automatically */}
       {incident.state === "triggered" && (
         <div className="mb-6">
+          {/* Game mode indicator */}
+          {isGameIncident && (
+            <div className="mb-2 p-2 bg-green-500/10 rounded border border-green-500/30">
+              <p className="text-green-500 font-mono text-sm text-center">
+                🎮 GAME MODE • {incident.point_multiplier || 1}x POINTS
+              </p>
+              {incident.triggered_by_name && (
+                <p className="text-green-500/60 font-mono text-xs text-center mt-1">
+                  Triggered by: {incident.triggered_by_name}
+                </p>
+              )}
+            </div>
+          )}
           <button
             onClick={() => {
               playUISound("click");
-              ackMutation.mutate();
+              if (isGameIncident) {
+                gameAckMutation.mutate();
+              } else {
+                ackMutation.mutate();
+              }
             }}
-            disabled={ackMutation.isPending}
-            className="w-full py-3 bg-amber-500/20 text-amber-500 rounded border-2 border-amber-500 font-mono font-bold disabled:opacity-50 active:scale-[0.98] active:bg-amber-500/40 transition-all"
+            disabled={ackMutation.isPending || gameAckMutation.isPending}
+            className={`w-full py-3 rounded border-2 font-mono font-bold disabled:opacity-50 active:scale-[0.98] transition-all ${
+              isGameIncident
+                ? "bg-green-500/20 text-green-500 border-green-500 active:bg-green-500/40"
+                : "bg-amber-500/20 text-amber-500 border-amber-500 active:bg-amber-500/40"
+            }`}
           >
-            {ackMutation.isPending ? "..." : "ACKNOWLEDGE"}
+            {ackMutation.isPending || gameAckMutation.isPending ? "..." : "ACKNOWLEDGE"}
           </button>
+        </div>
+      )}
+
+      {/* Game ack result feedback */}
+      {gameAckResult && (
+        <div className={`mb-6 p-4 rounded border-2 ${
+          gameAckResult.success
+            ? "bg-green-500/20 border-green-500 text-green-500"
+            : "bg-red-500/20 border-red-500 text-red-500"
+        }`}>
+          <p className="font-mono font-bold text-center text-lg">{gameAckResult.message}</p>
+          {gameAckResult.success && gameAckResult.points > 0 && (
+            <p className="font-mono text-center text-2xl mt-2">🏆 +{gameAckResult.points}</p>
+          )}
         </div>
       )}
 

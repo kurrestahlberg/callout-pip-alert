@@ -1,11 +1,12 @@
 import type { DynamoDBStreamEvent, DynamoDBRecord } from "aws-lambda";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import type { AttributeValue } from "@aws-sdk/client-dynamodb";
-import { docClient, QueryCommand } from "../lib/dynamo.js";
+import { docClient, QueryCommand, ScanCommand } from "../lib/dynamo.js";
 import { Incident, Device } from "../types/index.js";
 import { sendPushNotification, PushNotification } from "../lib/apns.js";
 
 const DEVICES_TABLE = process.env.DEVICES_TABLE!;
+const INCIDENTS_TABLE = process.env.INCIDENTS_TABLE!;
 
 type IncidentState = "triggered" | "acked" | "resolved";
 
@@ -36,10 +37,15 @@ export async function handler(event: DynamoDBStreamEvent): Promise<void> {
         continue;
       }
 
+      // Get badge count (unacked incidents for this user)
+      const badgeCount = await getUnackedIncidentCount(change.incident.assigned_to);
+      console.log(`[Streams] Badge count for ${change.incident.assigned_to}: ${badgeCount}`);
+
       // Send push to all devices
       for (const device of devices) {
         await sendPushNotification(device, {
           ...notification,
+          badge: badgeCount,
           data: {
             incident_id: change.incident.incident_id,
             severity: change.incident.severity,
@@ -175,4 +181,17 @@ async function getUserDevices(userId: string): Promise<Device[]> {
     })
   );
   return (result.Items as Device[]) || [];
+}
+
+async function getUnackedIncidentCount(userId: string): Promise<number> {
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: INCIDENTS_TABLE,
+      FilterExpression: "assigned_to = :uid AND #state = :state",
+      ExpressionAttributeNames: { "#state": "state" },
+      ExpressionAttributeValues: { ":uid": userId, ":state": "triggered" },
+      Select: "COUNT",
+    })
+  );
+  return result.Count || 0;
 }

@@ -35,3 +35,5 @@ npm-debug.log*
 *.apk
 *.aab
 AuthKey_*
+distribution*
+TestFlight_with_PipAlert.mobileprovision

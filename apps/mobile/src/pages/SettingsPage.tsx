@@ -5,7 +5,7 @@ import { useAudio } from "../hooks/useAudio";
 import { useDemoMode } from "../hooks/useDemoMode";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { startDemoSequence, stopDemoSequence, resetDemoCounter } from "../lib/demo";
-import { cloudDemoApi, devicesApi } from "../lib/api";
+import { cloudDemoApi, devicesApi, gameApi } from "../lib/api";
 import {
   CloudBackend,
   getBackends,
@@ -100,11 +100,24 @@ export default function SettingsPage() {
   const [geigerTestRunning, setGeigerTestRunning] = useState(false);
 
   // Cloud demo state
+  const [cloudDemoEnabled, setCloudDemoEnabled] = useState(false);
+  const [cloudDemoRunning, setCloudDemoRunning] = useState(false); // True after setup/start until reset
   const [cloudDemoLoading, setCloudDemoLoading] = useState(false);
   const [cloudDemoResult, setCloudDemoResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Push notifications
   const { token: pushToken, isRegistered: pushRegistered, error: pushError, status: pushStatus } = usePushNotifications(isAuthenticated);
+
+  // Game mode state
+  const [gameAvailable, setGameAvailable] = useState(false); // Backend supports game mode
+  const [gameEnabled, setGameEnabled] = useState(false); // User has toggled it on
+  const [gameLoading, setGameLoading] = useState(false);
+  const [gameSession, setGameSession] = useState<{ active: boolean; endsAt?: number; startedBy?: string } | null>(null);
+  const [gameTimeLeft, setGameTimeLeft] = useState(0);
+  const [gameSeverity, setGameSeverity] = useState("warning");
+  const [gameAlarmTitle, setGameAlarmTitle] = useState("");
+  const [gameCooldown, setGameCooldown] = useState(false);
+  const [gameResult, setGameResult] = useState<{ success: boolean; message: string } | null>(null);
   const [pushTestLoading, setPushTestLoading] = useState(false);
   const [pushTestResult, setPushTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -132,6 +145,45 @@ export default function SettingsPage() {
     setBackends(getBackends());
     setActiveId(getActiveBackendId());
   }, []);
+
+  // Check game mode availability and session status
+  useEffect(() => {
+    async function checkGame() {
+      try {
+        const config = await gameApi.getConfig();
+        setGameAvailable(config.enabled);
+        if (config.enabled && gameEnabled) {
+          const session = await gameApi.getSession();
+          setGameSession(session);
+          if (session.active && session.ends_at) {
+            setGameTimeLeft(Math.max(0, session.ends_at - Date.now()));
+          }
+        }
+      } catch (e) {
+        console.log("[Game] Check failed:", e);
+      }
+    }
+    if (isAuthenticated) {
+      checkGame();
+      // Poll session status every 2 seconds when game is enabled
+      const interval = setInterval(checkGame, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, gameEnabled]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (!gameSession?.active || !gameSession.endsAt) return;
+    const interval = setInterval(() => {
+      const left = Math.max(0, gameSession.endsAt! - Date.now());
+      setGameTimeLeft(left);
+      if (left === 0) {
+        setGameSession({ active: false });
+        setGameResult({ success: true, message: "Game ended!" });
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [gameSession?.active, gameSession?.endsAt]);
 
   useEffect(() => {
     async function loadBiometricStatus() {
@@ -227,6 +279,11 @@ export default function SettingsPage() {
     const newValue = !demoEnabled;
     setDemoEnabled(newValue);
     playUISound(newValue ? "toggle_on" : "toggle_off");
+    // Turn off cloud demo when enabling local demo
+    if (newValue && cloudDemoEnabled) {
+      setCloudDemoEnabled(false);
+      setCloudDemoResult(null);
+    }
   };
 
   const handleStartDemo = () => {
@@ -262,19 +319,12 @@ export default function SettingsPage() {
 
   const handleCloudDemoSetup = async () => {
     playUISound("click");
-
-    // Turn off local demo mode so cloud incidents are visible
-    if (demoEnabled) {
-      setDemoEnabled(false);
-      stopDemoSequence();
-      resetDemo();
-    }
-
     setCloudDemoLoading(true);
     setCloudDemoResult(null);
 
     try {
       const result = await cloudDemoApi.setup();
+      setCloudDemoRunning(true);
       setCloudDemoResult({
         success: true,
         message: `Team ready: ${result.team_id}. On-call until ${new Date(result.on_call_until).toLocaleTimeString()}`,
@@ -293,19 +343,12 @@ export default function SettingsPage() {
 
   const handleCloudDemoStart = async () => {
     playUISound("click");
-
-    // Turn off local demo mode so cloud incidents are visible
-    if (demoEnabled) {
-      setDemoEnabled(false);
-      stopDemoSequence();
-      resetDemo();
-    }
-
     setCloudDemoLoading(true);
     setCloudDemoResult(null);
 
     try {
       const result = await cloudDemoApi.start();
+      setCloudDemoRunning(true);
       setCloudDemoResult({
         success: true,
         message: `Published ${result.alarm_count} alarms to SNS`,
@@ -329,6 +372,7 @@ export default function SettingsPage() {
 
     try {
       const result = await cloudDemoApi.reset();
+      setCloudDemoRunning(false);
       setCloudDemoResult({
         success: true,
         message: `Reset: ${result.deleted_incidents} incidents, ${result.deleted_schedules} schedules`,
@@ -366,6 +410,62 @@ export default function SettingsPage() {
       playUISound("error");
     } finally {
       setPushTestLoading(false);
+    }
+  };
+
+  const handleStartGame = async () => {
+    playUISound("click");
+    setGameLoading(true);
+    setGameResult(null);
+    try {
+      const result = await gameApi.start(user?.getUsername());
+      setGameSession({ active: true, endsAt: result.ends_at, startedBy: result.started_by });
+      setGameTimeLeft(result.duration_ms);
+      setGameResult({ success: true, message: "Game started! 60 seconds!" });
+      playUISound("success");
+    } catch (error) {
+      setGameResult({ success: false, message: error instanceof Error ? error.message : "Failed to start" });
+      playUISound("error");
+    } finally {
+      setGameLoading(false);
+    }
+  };
+
+  const handleEndGame = async () => {
+    playUISound("click");
+    setGameLoading(true);
+    try {
+      await gameApi.end();
+      setGameSession({ active: false });
+      setGameResult({ success: true, message: "Game ended!" });
+      playUISound("success");
+    } catch (error) {
+      setGameResult({ success: false, message: error instanceof Error ? error.message : "Failed to end" });
+      playUISound("error");
+    } finally {
+      setGameLoading(false);
+    }
+  };
+
+  const handleTriggerAlarm = async () => {
+    if (!gameAlarmTitle.trim()) {
+      setGameResult({ success: false, message: "Enter an alarm title!" });
+      playUISound("error");
+      return;
+    }
+    playUISound("click");
+    setGameCooldown(true);
+    setGameResult(null);
+    try {
+      await gameApi.trigger(gameAlarmTitle.trim(), gameSeverity, user?.getUsername());
+      setGameAlarmTitle("");
+      playUISound("success");
+      navigate("incidents");
+    } catch (error) {
+      setGameResult({ success: false, message: error instanceof Error ? error.message : "Failed" });
+      playUISound("error");
+    } finally {
+      setTimeout(() => setGameCooldown(false), 500);
     }
   };
 
@@ -863,14 +963,20 @@ export default function SettingsPage() {
             <div>
               <h3 className="text-xs font-bold text-amber-500/80 font-mono">LOCAL DEMO</h3>
               <p className="text-xs text-amber-500/50 mt-0.5 font-mono">
-                {demoEnabled ? (demoRunning ? "DEMO RUNNING" : "CLIENT-SIDE ACTIVE") : "CLIENT-SIDE ONLY"}
+                {cloudDemoRunning ? "CLOUD DEMO ACTIVE" : demoEnabled ? (demoRunning ? "DEMO RUNNING" : "CLIENT-SIDE ACTIVE") : "CLIENT-SIDE ONLY"}
               </p>
             </div>
             <button
-              onClick={handleDemoToggle}
+              onClick={() => {
+                if (cloudDemoRunning) {
+                  playUISound("error");
+                  return;
+                }
+                handleDemoToggle();
+              }}
               className={`relative w-12 h-7 rounded-full transition-colors border-2 ${
                 demoEnabled ? "bg-amber-500/20 border-amber-500" : "bg-zinc-900 border-amber-500/30"
-              }`}
+              } ${cloudDemoRunning ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               <span
                 className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${
@@ -939,50 +1045,221 @@ export default function SettingsPage() {
 
         {/* Cloud Demo Section */}
         <div>
-          <div className="mb-2">
-            <h3 className="text-xs font-bold text-amber-500/80 font-mono">CLOUD DEMO (E2E)</h3>
-            <p className="text-xs text-amber-500/50 mt-0.5 font-mono">SNS → LAMBDA → DYNAMODB</p>
-          </div>
-          <div className="p-2 bg-green-500/10 border border-green-500/30 rounded mb-3">
-            <p className="text-xs text-green-500/80 font-mono text-center">
-              FULL E2E: ALARMS → SNS → INCIDENTS
-            </p>
-          </div>
-          {cloudDemoResult && (
-            <div className={`p-2 rounded mb-3 border ${cloudDemoResult.success ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30"}`}>
-              <p className={`text-xs font-mono text-center ${cloudDemoResult.success ? "text-green-500" : "text-red-500"}`}>
-                {cloudDemoResult.message}
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h3 className="text-xs font-bold text-amber-500/80 font-mono">CLOUD DEMO (E2E)</h3>
+              <p className="text-xs text-amber-500/50 mt-0.5 font-mono">
+                {cloudDemoRunning ? "RUNNING — RESET TO DISABLE" : cloudDemoEnabled ? "SNS → LAMBDA → DYNAMODB" : "FULL E2E TEST"}
               </p>
             </div>
-          )}
-          <div className="flex gap-2">
             <button
-              onClick={handleCloudDemoSetup}
-              disabled={!isAuthenticated || cloudDemoLoading}
-              className="flex-1 py-2 bg-amber-500/20 text-amber-500 rounded border border-amber-500/50 font-mono text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
+              onClick={() => {
+                // Can't turn off while running
+                if (cloudDemoEnabled && cloudDemoRunning) {
+                  playUISound("error");
+                  return;
+                }
+                const newValue = !cloudDemoEnabled;
+                setCloudDemoEnabled(newValue);
+                playUISound(newValue ? "toggle_on" : "toggle_off");
+                // Turn off local demo when enabling cloud demo
+                if (newValue && demoEnabled) {
+                  stopDemoSequence();
+                  resetDemo();
+                  setDemoEnabled(false);
+                }
+                if (!newValue) setCloudDemoResult(null);
+              }}
+              disabled={!isAuthenticated}
+              className={`relative w-12 h-7 rounded-full transition-colors border-2 ${
+                cloudDemoEnabled ? "bg-green-500/20 border-green-500" : "bg-zinc-900 border-amber-500/30"
+              } ${!isAuthenticated ? "opacity-50" : ""} ${cloudDemoRunning ? "cursor-not-allowed" : ""}`}
             >
-              {cloudDemoLoading ? "..." : "1. SETUP"}
-            </button>
-            <button
-              onClick={handleCloudDemoStart}
-              disabled={!isAuthenticated || cloudDemoLoading}
-              className="flex-1 py-2 bg-green-500/20 text-green-500 rounded border border-green-500/50 font-mono text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
-            >
-              {cloudDemoLoading ? "..." : "2. START"}
-            </button>
-            <button
-              onClick={handleCloudDemoReset}
-              disabled={!isAuthenticated || cloudDemoLoading}
-              className="flex-1 py-2 bg-red-500/20 text-red-500 rounded border border-red-500/50 font-mono text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
-            >
-              {cloudDemoLoading ? "..." : "3. RESET"}
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${
+                  cloudDemoEnabled ? "translate-x-5 bg-green-500" : "bg-amber-500/50"
+                }`}
+              />
             </button>
           </div>
+
+          {cloudDemoEnabled && (
+            <>
+              <div className="p-2 bg-green-500/10 border border-green-500/30 rounded mb-3">
+                <p className="text-xs text-green-500/80 font-mono text-center">
+                  FULL E2E: ALARMS → SNS → INCIDENTS
+                </p>
+              </div>
+              {cloudDemoResult && (
+                <div className={`p-2 rounded mb-3 border ${cloudDemoResult.success ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30"}`}>
+                  <p className={`text-xs font-mono text-center ${cloudDemoResult.success ? "text-green-500" : "text-red-500"}`}>
+                    {cloudDemoResult.message}
+                  </p>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCloudDemoSetup}
+                  disabled={cloudDemoLoading}
+                  className="flex-1 py-2 bg-amber-500/20 text-amber-500 rounded border border-amber-500/50 font-mono text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
+                >
+                  {cloudDemoLoading ? "..." : "1. SETUP"}
+                </button>
+                <button
+                  onClick={handleCloudDemoStart}
+                  disabled={cloudDemoLoading}
+                  className="flex-1 py-2 bg-green-500/20 text-green-500 rounded border border-green-500/50 font-mono text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
+                >
+                  {cloudDemoLoading ? "..." : "2. START"}
+                </button>
+                <button
+                  onClick={handleCloudDemoReset}
+                  disabled={cloudDemoLoading}
+                  className="flex-1 py-2 bg-red-500/20 text-red-500 rounded border border-red-500/50 font-mono text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
+                >
+                  {cloudDemoLoading ? "..." : "3. RESET"}
+                </button>
+              </div>
+            </>
+          )}
           {!isAuthenticated && (
             <p className="text-xs text-amber-500/50 font-mono text-center mt-2">SIGN IN TO USE</p>
           )}
         </div>
       </div>
+
+      {/* Game Mode */}
+      {gameAvailable && isAuthenticated && (
+        <div className="bg-zinc-800 rounded border-2 border-green-500/30 p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-bold text-green-500 font-mono">{">"} GAME MODE</h2>
+              <p className="text-xs text-green-500/50 mt-0.5 font-mono">
+                {gameEnabled ? (gameSession?.active ? "GAME ACTIVE" : "MULTIPLAYER READY") : "60s ROUNDS"}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                const newValue = !gameEnabled;
+                setGameEnabled(newValue);
+                playUISound(newValue ? "toggle_on" : "toggle_off");
+                if (!newValue) {
+                  setGameResult(null);
+                  setGameSession(null);
+                }
+              }}
+              className={`relative w-12 h-7 rounded-full transition-colors border-2 ${
+                gameEnabled ? "bg-green-500/20 border-green-500" : "bg-zinc-900 border-green-500/30"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${
+                  gameEnabled ? "translate-x-5 bg-green-500" : "bg-green-500/50"
+                }`}
+              />
+            </button>
+          </div>
+
+          {gameEnabled && (
+            <>
+              {/* Game result */}
+              {gameResult && (
+                <div className={`p-2 rounded mb-3 border ${gameResult.success ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30"}`}>
+                  <p className={`text-xs font-mono text-center ${gameResult.success ? "text-green-500" : "text-red-500"}`}>
+                    {gameResult.message}
+                  </p>
+                </div>
+              )}
+
+              {!gameSession?.active ? (
+                /* No active game - show START button */
+                <div>
+                  <p className="text-xs text-green-500/60 font-mono mb-3 text-center">60 SECOND ROUNDS • TRIGGER ALARMS • RACE TO ACK!</p>
+                  <button
+                    onClick={handleStartGame}
+                    disabled={gameLoading}
+                    className="w-full py-4 bg-green-500/20 text-green-500 rounded border-2 border-green-500 font-mono text-lg font-bold disabled:opacity-50 active:scale-95 transition-all"
+                  >
+                    {gameLoading ? "STARTING..." : "START GAME"}
+                  </button>
+                </div>
+              ) : (
+                /* Active game - show timer, trigger form, and end button */
+                <div>
+                  {/* Countdown timer */}
+                  <div className="text-center mb-4">
+                    <p className="text-4xl font-bold text-green-500 font-mono">
+                      {Math.ceil(gameTimeLeft / 1000)}s
+                    </p>
+                    <p className="text-xs text-green-500/60 font-mono">
+                      Started by {gameSession.startedBy}
+                    </p>
+                  </div>
+
+                  {/* Alarm trigger form */}
+                  <div className="mb-3">
+                    <input
+                      type="text"
+                      placeholder="Alarm title..."
+                      value={gameAlarmTitle}
+                      onChange={(e) => setGameAlarmTitle(e.target.value.slice(0, 50))}
+                      maxLength={50}
+                      disabled={gameCooldown}
+                      className="w-full px-3 py-2 bg-zinc-900 border-2 border-green-500/30 rounded text-green-500 font-mono placeholder-green-500/30 focus:outline-none focus:border-green-500 text-base disabled:opacity-50"
+                    />
+                  </div>
+
+                  {/* Severity buttons */}
+                  <div className="flex gap-2 mb-3">
+                    {[
+                      { id: "info", label: "1x", color: "blue" },
+                      { id: "warning", label: "2x", color: "amber" },
+                      { id: "critical", label: "3x", color: "red" },
+                    ].map((sev) => (
+                      <button
+                        key={sev.id}
+                        onClick={() => setGameSeverity(sev.id)}
+                        disabled={gameCooldown}
+                        className={`flex-1 py-2 rounded border font-mono text-sm font-bold ${
+                          gameSeverity === sev.id
+                            ? sev.color === "blue" ? "bg-blue-500/20 border-blue-500 text-blue-500"
+                            : sev.color === "amber" ? "bg-amber-500/20 border-amber-500 text-amber-500"
+                            : "bg-red-500/20 border-red-500 text-red-500"
+                            : "bg-zinc-900 border-green-500/30 text-green-500/50"
+                        }`}
+                      >
+                        {sev.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Send alarm button */}
+                  <button
+                    onClick={handleTriggerAlarm}
+                    disabled={gameCooldown || !gameAlarmTitle.trim()}
+                    className={`w-full py-3 rounded border font-mono font-bold mb-3 ${
+                      gameCooldown
+                        ? "bg-amber-500/20 text-amber-500 border-amber-500/50 animate-pulse"
+                        : "bg-green-500/20 text-green-500 border-green-500/50"
+                    }`}
+                  >
+                    {gameCooldown ? "SENDING..." : "SEND ALARM"}
+                  </button>
+
+                  {/* End game button */}
+                  <button
+                    onClick={handleEndGame}
+                    disabled={gameLoading}
+                    className="w-full py-2 bg-red-500/20 text-red-500 rounded border border-red-500/50 font-mono text-sm font-bold"
+                  >
+                    END GAME
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* User info */}
       {isAuthenticated && (

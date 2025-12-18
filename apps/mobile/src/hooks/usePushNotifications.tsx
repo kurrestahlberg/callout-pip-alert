@@ -245,9 +245,8 @@ export function usePushNotifications(
 
     const registerDevice = async () => {
       try {
-        // Use sandbox endpoint for development builds (USB/Xcode)
-        // TODO: Detect release builds and set sandbox=false
-        const isSandbox = import.meta.env.DEV || !import.meta.env.PROD;
+        // Use sandbox for dev builds, production for release builds
+        const isSandbox = import.meta.env.DEV;
         console.log(`[Push] Registering device with backend (sandbox: ${isSandbox})...`);
         await devicesApi.register(state.token!, "ios", isSandbox);
         setState((prev) => ({ ...prev, isRegistered: true, error: null }));
