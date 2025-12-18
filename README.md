@@ -11,7 +11,7 @@
 > FAULT-TEC APPROVED INCIDENT RESPONSE SYSTEM
 ```
 
-Mobile incident management app for AWS CloudWatch alarms. Like PagerDuty/OpsGenie, but with Fallout Pip-Boy aesthetics.
+Mobile incident management app for AWS CloudWatch alarms through SNS with Fallout Pip-Boy aesthetics (directly or through EventBridge forwards).
 
 ## Stack
 
