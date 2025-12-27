@@ -6,6 +6,11 @@ function getApiUrl(): string {
   return backend?.apiUrl || import.meta.env.VITE_API_URL || "";
 }
 
+export function getAuthMode(): "password" | "oidc" {
+  const backend = getActiveBackend();
+  return backend?.authMode ?? "password";
+}
+
 type GetTokenFn = () => Promise<string | null>;
 let getTokenFn: GetTokenFn | null = null;
 

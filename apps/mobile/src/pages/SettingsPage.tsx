@@ -14,6 +14,7 @@ import {
   deleteBackend,
   getActiveBackendId,
   setActiveBackendId,
+  AuthMode,
 } from "../lib/backends";
 import {
   checkBiometricAvailability,
@@ -65,6 +66,10 @@ interface BackendFormData {
   region: string;
   userPoolId: string;
   userPoolClientId: string;
+  authMode: AuthMode;
+  cognitoDomain: string;
+  redirectUri: string;
+  scopes: string;
 }
 
 const emptyFormData: BackendFormData = {
@@ -73,6 +78,10 @@ const emptyFormData: BackendFormData = {
   region: "",
   userPoolId: "",
   userPoolClientId: "",
+  authMode: "password",
+  cognitoDomain: "",
+  redirectUri: "",
+  scopes: "openid,email,profile",
 };
 
 export default function SettingsPage() {
@@ -231,6 +240,10 @@ export default function SettingsPage() {
       region: backend.region,
       userPoolId: backend.userPoolId,
       userPoolClientId: backend.userPoolClientId,
+      authMode: backend.authMode ?? "password",
+      cognitoDomain: backend.cognitoDomain || "",
+      redirectUri: backend.redirectUri || "",
+      scopes: backend.scopes?.join(",") || "openid,email,profile",
     });
     setEditingId(backend.id);
     setShowForm(true);
@@ -241,10 +254,27 @@ export default function SettingsPage() {
       return;
     }
 
+    if (formData.authMode === "oidc" && (!formData.cognitoDomain || !formData.redirectUri)) {
+      return;
+    }
+
+    const scopes = formData.scopes
+      ? formData.scopes
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : ["openid", "email", "profile"];
+
     if (editingId) {
-      updateBackend(editingId, formData);
+      updateBackend(editingId, {
+        ...formData,
+        scopes,
+      });
     } else {
-      addBackend(formData);
+      addBackend({
+        ...formData,
+        scopes,
+      });
     }
 
     setBackends(getBackends());
@@ -544,6 +574,51 @@ export default function SettingsPage() {
                   className="w-full px-3 py-2 bg-zinc-800 border-2 border-amber-500/30 rounded text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">{">"} AUTH MODE</label>
+                <select
+                  value={formData.authMode}
+                  onChange={(e) => setFormData({ ...formData, authMode: e.target.value as AuthMode })}
+                  className="w-full px-3 py-2 bg-zinc-800 border-2 border-amber-500/30 rounded text-amber-500 font-mono focus:outline-none focus:border-amber-500 text-base"
+                >
+                  <option value="password">Password (SRP)</option>
+                  <option value="oidc">OIDC / Hosted UI (Entra)</option>
+                </select>
+              </div>
+              {formData.authMode === "oidc" && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">{">"} COGNITO DOMAIN</label>
+                    <input
+                      type="text"
+                      placeholder="https://your-domain.auth.region.amazoncognito.com"
+                      value={formData.cognitoDomain}
+                      onChange={(e) => setFormData({ ...formData, cognitoDomain: e.target.value })}
+                      className="w-full px-3 py-2 bg-zinc-800 border-2 border-amber-500/30 rounded text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">{">"} REDIRECT URI</label>
+                    <input
+                      type="text"
+                      placeholder="tauri://localhost/callback"
+                      value={formData.redirectUri}
+                      onChange={(e) => setFormData({ ...formData, redirectUri: e.target.value })}
+                      className="w-full px-3 py-2 bg-zinc-800 border-2 border-amber-500/30 rounded text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-amber-500/70 font-mono mb-1">{">"} SCOPES (CSV)</label>
+                    <input
+                      type="text"
+                      placeholder="openid,email,profile"
+                      value={formData.scopes}
+                      onChange={(e) => setFormData({ ...formData, scopes: e.target.value })}
+                      className="w-full px-3 py-2 bg-zinc-800 border-2 border-amber-500/30 rounded text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
+                    />
+                  </div>
+                </>
+              )}
               <button
                 onClick={() => {
                   playUISound("click");
@@ -571,8 +646,11 @@ export default function SettingsPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-amber-500 font-mono">{backend.name}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded border font-mono font-bold border-amber-500/40 text-amber-500/80">
+                        {backend.authMode === "oidc" ? "OIDC" : "PASSWORD"}
+                      </span>
                       {activeId === backend.id && (
                         <span className="text-xs bg-green-500/20 text-green-500 px-2 py-0.5 rounded border border-green-500/50 font-mono font-bold">
                           ACTIVE
@@ -581,6 +659,11 @@ export default function SettingsPage() {
                     </div>
                     <p className="text-xs text-amber-500/60 truncate mt-1 font-mono">{backend.apiUrl}</p>
                     <p className="text-xs text-amber-500/40 mt-0.5 font-mono">{backend.region}</p>
+                    {backend.authMode === "oidc" && (
+                      <p className="text-[10px] text-amber-500/50 mt-0.5 font-mono truncate">
+                        {backend.cognitoDomain || "Missing domain"} • {backend.redirectUri || "Missing redirect"}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 ml-2">
                     {activeId !== backend.id && (

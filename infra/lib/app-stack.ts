@@ -10,6 +10,7 @@ import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import { Construct } from "constructs";
 import * as path from "path";
 
@@ -22,12 +23,54 @@ const bundlingOptions: nodejs.BundlingOptions = {
   mainFields: ["module", "main"],
   esbuildArgs: { "--bundle": true },
   // Add require shim for CommonJS modules (jsonwebtoken uses require("buffer"))
-  banner: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+  banner:
+    "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
 };
 
 export class AppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // Optional Entra ID (OIDC) + Hosted UI settings
+    // All config read from SSM Parameter Store at /callout-pip-alert/idp/*
+    // Required parameters:
+    // - /callout-pip-alert/idp/cognitoDomainPrefix
+    // - /callout-pip-alert/idp/callbackUrls (comma-separated)
+    // - /callout-pip-alert/idp/logoutUrls (comma-separated, optional)
+    // - /callout-pip-alert/idp/entraTenantId
+    // - /callout-pip-alert/idp/entraClientId
+    // - /callout-pip-alert/idp/entraClientSecretArn (ARN of secret in Secrets Manager)
+    const idpParamPrefix = "/callout-pip-alert/idp";
+
+    const getConfigString = (paramName: string) =>
+      ssm.StringParameter.valueForStringParameter(this, paramName);
+
+    const splitCsv = (value: string) =>
+      value
+        .split(",")
+        .map((u) => u.trim())
+        .filter((u) => u.length > 0);
+
+    const cognitoDomainPrefix = getConfigString(
+      `${idpParamPrefix}/cognitoDomainPrefix`
+    );
+
+    const callbackUrls = splitCsv(
+      getConfigString(`${idpParamPrefix}/callbackUrls`)
+    );
+
+    const logoutUrls = splitCsv(
+      getConfigString(`${idpParamPrefix}/logoutUrls`)
+    );
+
+    const entraTenantId = getConfigString(`${idpParamPrefix}/entraTenantId`);
+    const entraClientId = getConfigString(`${idpParamPrefix}/entraClientId`);
+    const entraClientSecretArn = getConfigString(
+      `${idpParamPrefix}/entraClientSecretArn`
+    );
+    const entraIssuerUrl = entraTenantId
+      ? `https://login.microsoftonline.com/${entraTenantId}/v2.0`
+      : undefined;
 
     // ==================== COGNITO ====================
     const userPool = new cognito.UserPool(this, "UserPool", {
@@ -46,6 +89,68 @@ export class AppStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // Optional Hosted UI domain
+    if (cognitoDomainPrefix) {
+      userPool.addDomain("UserPoolDomain", {
+        cognitoDomain: { domainPrefix: cognitoDomainPrefix },
+      });
+    }
+
+    // Optional Entra ID (OIDC) provider
+    let entraProvider: cognito.UserPoolIdentityProviderOidc | undefined;
+    if (entraIssuerUrl && entraClientId && entraClientSecretArn) {
+      const clientSecret = secretsmanager.Secret.fromSecretCompleteArn(
+        this,
+        "EntraClientSecret",
+        entraClientSecretArn
+      );
+      entraProvider = new cognito.UserPoolIdentityProviderOidc(
+        this,
+        "EntraProvider",
+        {
+          userPool,
+          name: "EntraID",
+          issuerUrl: entraIssuerUrl,
+          clientId: entraClientId,
+          clientSecret: clientSecret.secretValue.toString(),
+          scopes: ["openid", "profile", "email"],
+          attributeRequestMethod: cognito.OidcAttributeRequestMethod.POST,
+          attributeMapping: {
+            email: cognito.ProviderAttribute.other("email"),
+            givenName: cognito.ProviderAttribute.other("given_name"),
+            familyName: cognito.ProviderAttribute.other("family_name"),
+            preferredUsername:
+              cognito.ProviderAttribute.other("preferred_username"),
+          },
+        }
+      );
+    }
+
+    const supportedIdps: cognito.UserPoolClientIdentityProvider[] = [
+      cognito.UserPoolClientIdentityProvider.COGNITO,
+    ];
+    if (entraProvider) {
+      supportedIdps.push(
+        cognito.UserPoolClientIdentityProvider.custom(
+          entraProvider.providerName
+        )
+      );
+    }
+
+    const oAuthConfig =
+      callbackUrls.length > 0
+        ? {
+            flows: { authorizationCodeGrant: true },
+            scopes: [
+              cognito.OAuthScope.OPENID,
+              cognito.OAuthScope.EMAIL,
+              cognito.OAuthScope.PROFILE,
+            ],
+            callbackUrls,
+            logoutUrls: logoutUrls.length > 0 ? logoutUrls : callbackUrls,
+          }
+        : undefined;
+
     const userPoolClient = userPool.addClient("AppClient", {
       userPoolClientName: "cw-alarms-app",
       authFlows: {
@@ -56,6 +161,8 @@ export class AppStack extends cdk.Stack {
       accessTokenValidity: cdk.Duration.hours(1),
       idTokenValidity: cdk.Duration.hours(1),
       refreshTokenValidity: cdk.Duration.days(30),
+      supportedIdentityProviders: supportedIdps,
+      oAuth: oAuthConfig,
     });
 
     // ==================== DYNAMODB TABLES ====================
@@ -83,7 +190,10 @@ export class AppStack extends cdk.Stack {
 
     const incidentsTable = new dynamodb.Table(this, "IncidentsTable", {
       tableName: "cw-alarms-incidents",
-      partitionKey: { name: "incident_id", type: dynamodb.AttributeType.STRING },
+      partitionKey: {
+        name: "incident_id",
+        type: dynamodb.AttributeType.STRING,
+      },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       timeToLiveAttribute: "ttl", // Auto-delete incidents after 24h
@@ -158,15 +268,19 @@ export class AppStack extends cdk.Stack {
     apnsSecret.grantRead(devicesHandler);
 
     // Incidents handler
-    const incidentsHandler = new nodejs.NodejsFunction(this, "IncidentsHandler", {
-      functionName: "cw-alarms-incidents",
-      runtime: lambda.Runtime.NODEJS_22_X,
-      handler: "handler",
-      entry: path.join(functionsPath, "handlers/incidents.ts"),
-      environment: commonEnv,
-      timeout: cdk.Duration.seconds(10),
-      bundling: bundlingOptions,
-    });
+    const incidentsHandler = new nodejs.NodejsFunction(
+      this,
+      "IncidentsHandler",
+      {
+        functionName: "cw-alarms-incidents",
+        runtime: lambda.Runtime.NODEJS_22_X,
+        handler: "handler",
+        entry: path.join(functionsPath, "handlers/incidents.ts"),
+        environment: commonEnv,
+        timeout: cdk.Duration.seconds(10),
+        bundling: bundlingOptions,
+      }
+    );
     incidentsTable.grantReadWriteData(incidentsHandler);
     teamsTable.grantReadData(incidentsHandler);
 
@@ -184,15 +298,19 @@ export class AppStack extends cdk.Stack {
     usersTable.grantReadWriteData(teamsHandler);
 
     // Schedules handler
-    const schedulesHandler = new nodejs.NodejsFunction(this, "SchedulesHandler", {
-      functionName: "cw-alarms-schedules",
-      runtime: lambda.Runtime.NODEJS_22_X,
-      handler: "handler",
-      entry: path.join(functionsPath, "handlers/schedules.ts"),
-      environment: commonEnv,
-      timeout: cdk.Duration.seconds(10),
-      bundling: bundlingOptions,
-    });
+    const schedulesHandler = new nodejs.NodejsFunction(
+      this,
+      "SchedulesHandler",
+      {
+        functionName: "cw-alarms-schedules",
+        runtime: lambda.Runtime.NODEJS_22_X,
+        handler: "handler",
+        entry: path.join(functionsPath, "handlers/schedules.ts"),
+        environment: commonEnv,
+        timeout: cdk.Duration.seconds(10),
+        bundling: bundlingOptions,
+      }
+    );
     schedulesTable.grantReadWriteData(schedulesHandler);
     teamsTable.grantReadData(schedulesHandler);
 
@@ -209,22 +327,28 @@ export class AppStack extends cdk.Stack {
     incidentsTable.grantReadWriteData(alarmHandler);
     teamsTable.grantReadData(alarmHandler);
     schedulesTable.grantReadData(alarmHandler);
-    alarmsTopic.addSubscription(new snsSubscriptions.LambdaSubscription(alarmHandler));
+    alarmsTopic.addSubscription(
+      new snsSubscriptions.LambdaSubscription(alarmHandler)
+    );
 
     // Incident streams handler - sends ALL push notifications
-    const incidentStreamsHandler = new nodejs.NodejsFunction(this, "IncidentStreamsHandler", {
-      functionName: "cw-alarms-incident-streams",
-      runtime: lambda.Runtime.NODEJS_22_X,
-      handler: "handler",
-      entry: path.join(functionsPath, "handlers/incident-streams.ts"),
-      environment: {
-        DEVICES_TABLE: devicesTable.tableName,
-        INCIDENTS_TABLE: incidentsTable.tableName,
-        APNS_SECRET_ARN: apnsSecret.secretArn,
-      },
-      timeout: cdk.Duration.seconds(30),
-      bundling: bundlingOptions,
-    });
+    const incidentStreamsHandler = new nodejs.NodejsFunction(
+      this,
+      "IncidentStreamsHandler",
+      {
+        functionName: "cw-alarms-incident-streams",
+        runtime: lambda.Runtime.NODEJS_22_X,
+        handler: "handler",
+        entry: path.join(functionsPath, "handlers/incident-streams.ts"),
+        environment: {
+          DEVICES_TABLE: devicesTable.tableName,
+          INCIDENTS_TABLE: incidentsTable.tableName,
+          APNS_SECRET_ARN: apnsSecret.secretArn,
+        },
+        timeout: cdk.Duration.seconds(30),
+        bundling: bundlingOptions,
+      }
+    );
     devicesTable.grantReadData(incidentStreamsHandler);
     incidentsTable.grantReadData(incidentStreamsHandler);
     apnsSecret.grantRead(incidentStreamsHandler);
@@ -288,7 +412,9 @@ export class AppStack extends cdk.Stack {
     // JWT Authorizer
     const authorizer = new apigatewayAuthorizers.HttpJwtAuthorizer(
       "JwtAuthorizer",
-      `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
+      `https://cognito-idp.${cdk.Stack.of(this).region}.amazonaws.com/${
+        userPool.userPoolId
+      }`,
       {
         jwtAudience: [userPoolClient.userPoolClientId],
       }
@@ -298,19 +424,28 @@ export class AppStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/devices",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("DevicesPost", devicesHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "DevicesPost",
+        devicesHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/devices/{token}",
       methods: [apigateway.HttpMethod.DELETE],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("DevicesDelete", devicesHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "DevicesDelete",
+        devicesHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/devices/test-push",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("DevicesTestPush", devicesHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "DevicesTestPush",
+        devicesHandler
+      ),
       authorizer,
     });
 
@@ -318,37 +453,55 @@ export class AppStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/incidents",
       methods: [apigateway.HttpMethod.GET],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("IncidentsList", incidentsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "IncidentsList",
+        incidentsHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/incidents/{id}",
       methods: [apigateway.HttpMethod.GET],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("IncidentsGet", incidentsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "IncidentsGet",
+        incidentsHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/incidents/{id}/ack",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("IncidentsAck", incidentsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "IncidentsAck",
+        incidentsHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/incidents/{id}/unack",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("IncidentsUnack", incidentsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "IncidentsUnack",
+        incidentsHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/incidents/{id}/resolve",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("IncidentsResolve", incidentsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "IncidentsResolve",
+        incidentsHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/incidents/{id}/reassign",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("IncidentsReassign", incidentsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "IncidentsReassign",
+        incidentsHandler
+      ),
       authorizer,
     });
 
@@ -356,25 +509,37 @@ export class AppStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/teams",
       methods: [apigateway.HttpMethod.GET, apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("Teams", teamsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "Teams",
+        teamsHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/teams/{id}",
       methods: [apigateway.HttpMethod.GET, apigateway.HttpMethod.PUT],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("TeamsById", teamsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "TeamsById",
+        teamsHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/teams/{id}/members",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("TeamsMembersAdd", teamsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "TeamsMembersAdd",
+        teamsHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/teams/{id}/members/{uid}",
       methods: [apigateway.HttpMethod.DELETE],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("TeamsMembersRemove", teamsHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "TeamsMembersRemove",
+        teamsHandler
+      ),
       authorizer,
     });
 
@@ -382,19 +547,28 @@ export class AppStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/schedules/current",
       methods: [apigateway.HttpMethod.GET],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("SchedulesCurrent", schedulesHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "SchedulesCurrent",
+        schedulesHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/schedules/{team_id}",
       methods: [apigateway.HttpMethod.GET, apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("SchedulesByTeam", schedulesHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "SchedulesByTeam",
+        schedulesHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/schedules/{team_id}/{slot_id}",
       methods: [apigateway.HttpMethod.DELETE],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("SchedulesDelete", schedulesHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "SchedulesDelete",
+        schedulesHandler
+      ),
       authorizer,
     });
 
@@ -402,19 +576,28 @@ export class AppStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/demo/start",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("DemoStart", demoHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "DemoStart",
+        demoHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/demo/setup",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("DemoSetup", demoHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "DemoSetup",
+        demoHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/demo/reset",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("DemoReset", demoHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "DemoReset",
+        demoHandler
+      ),
       authorizer,
     });
 
@@ -422,49 +605,73 @@ export class AppStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/game/config",
       methods: [apigateway.HttpMethod.GET],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameConfig", gameHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "GameConfig",
+        gameHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/game/start",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameStart", gameHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "GameStart",
+        gameHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/game/end",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameEnd", gameHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "GameEnd",
+        gameHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/game/session",
       methods: [apigateway.HttpMethod.GET],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameSession", gameHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "GameSession",
+        gameHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/game/trigger",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameTrigger", gameHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "GameTrigger",
+        gameHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/game/ack/{id}",
       methods: [apigateway.HttpMethod.POST],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameAck", gameHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "GameAck",
+        gameHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/game/incidents",
       methods: [apigateway.HttpMethod.GET],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameIncidents", gameHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "GameIncidents",
+        gameHandler
+      ),
       authorizer,
     });
     httpApi.addRoutes({
       path: "/game/leaderboard",
       methods: [apigateway.HttpMethod.GET],
-      integration: new apigatewayIntegrations.HttpLambdaIntegration("GameLeaderboard", gameHandler),
+      integration: new apigatewayIntegrations.HttpLambdaIntegration(
+        "GameLeaderboard",
+        gameHandler
+      ),
       authorizer,
     });
 
@@ -490,7 +697,7 @@ export class AppStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "Region", {
-      value: this.region,
+      value: cdk.Stack.of(this).region,
       description: "AWS Region",
     });
   }

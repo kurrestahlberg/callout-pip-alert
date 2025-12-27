@@ -12,7 +12,17 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const { signIn, signUp, confirmSignUp, signInWithBiometric, isConfigured, canUseBiometric, biometricType } = useAuth();
+  const {
+    signIn,
+    signUp,
+    confirmSignUp,
+    signInWithBiometric,
+    isConfigured,
+    canUseBiometric,
+    biometricType,
+    authMode,
+    startOidcLogin,
+  } = useAuth();
   const { navigate } = useNavigation();
 
   // Note: Auto-biometric login disabled - user must tap the biometric button
@@ -44,17 +54,21 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      if (isConfirming) {
-        await confirmSignUp(email, confirmCode);
-        setIsConfirming(false);
-        setIsSignUp(false);
-        setError("ACCOUNT CONFIRMED. PROCEED WITH LOGIN.");
-      } else if (isSignUp) {
-        await signUp(email, password, name);
-        setIsConfirming(true);
+      if (authMode === "oidc") {
+        await startOidcLogin();
       } else {
-        await signIn(email, password);
-        navigate("incidents");
+        if (isConfirming) {
+          await confirmSignUp(email, confirmCode);
+          setIsConfirming(false);
+          setIsSignUp(false);
+          setError("ACCOUNT CONFIRMED. PROCEED WITH LOGIN.");
+        } else if (isSignUp) {
+          await signUp(email, password, name);
+          setIsConfirming(true);
+        } else {
+          await signIn(email, password);
+          navigate("incidents");
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -122,58 +136,68 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignUp && !isConfirming && (
-              <div>
-                <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} NAME</label>
-                <input
-                  type="text"
-                  placeholder="Enter your name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-3 rounded bg-zinc-800 border-2 border-amber-500/30 text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
-                  required
-                />
-              </div>
-            )}
-
-            {!isConfirming && (
+            {authMode === "password" && (
               <>
-                <div>
-                  <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} EMAIL</label>
-                  <input
-                    type="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 rounded bg-zinc-800 border-2 border-amber-500/30 text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} PASSWORD</label>
-                  <input
-                    type="password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 rounded bg-zinc-800 border-2 border-amber-500/30 text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
-                    required
-                  />
-                </div>
+                {isSignUp && !isConfirming && (
+                  <div>
+                    <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} NAME</label>
+                    <input
+                      type="text"
+                      placeholder="Enter your name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full px-4 py-3 rounded bg-zinc-800 border-2 border-amber-500/30 text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
+                      required
+                    />
+                  </div>
+                )}
+
+                {!isConfirming && (
+                  <>
+                    <div>
+                      <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} EMAIL</label>
+                      <input
+                        type="email"
+                        placeholder="Enter your email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-4 py-3 rounded bg-zinc-800 border-2 border-amber-500/30 text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} PASSWORD</label>
+                      <input
+                        type="password"
+                        placeholder="Enter your password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full px-4 py-3 rounded bg-zinc-800 border-2 border-amber-500/30 text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
+                        required
+                      />
+                    </div>
+                  </>
+                )}
+
+                {isConfirming && (
+                  <div>
+                    <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} CONFIRMATION CODE</label>
+                    <input
+                      type="text"
+                      placeholder="Enter code from email"
+                      value={confirmCode}
+                      onChange={(e) => setConfirmCode(e.target.value)}
+                      className="w-full px-4 py-3 rounded bg-zinc-800 border-2 border-amber-500/30 text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
+                      required
+                    />
+                  </div>
+                )}
               </>
             )}
 
-            {isConfirming && (
-              <div>
-                <label className="block text-amber-500/70 font-mono text-xs mb-1">{">"} CONFIRMATION CODE</label>
-                <input
-                  type="text"
-                  placeholder="Enter code from email"
-                  value={confirmCode}
-                  onChange={(e) => setConfirmCode(e.target.value)}
-                  className="w-full px-4 py-3 rounded bg-zinc-800 border-2 border-amber-500/30 text-amber-500 font-mono placeholder-amber-500/30 focus:outline-none focus:border-amber-500 text-base"
-                  required
-                />
+            {authMode === "oidc" && (
+              <div className="p-3 rounded border border-amber-500/30 bg-amber-500/5 text-amber-500/80 font-mono text-sm">
+                ENTRA / OIDC ENABLED. YOU WILL BE REDIRECTED TO SSO.
               </div>
             )}
 
@@ -190,6 +214,8 @@ export default function LoginPage() {
             >
               {isLoading
                 ? "PROCESSING..."
+                : authMode === "oidc"
+                ? "CONTINUE WITH SSO"
                 : isConfirming
                 ? "CONFIRM"
                 : isSignUp
@@ -198,7 +224,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {!isConfirming && (
+          {authMode === "password" && !isConfirming && (
             <button
               onClick={() => {
                 setIsSignUp(!isSignUp);

@@ -1,5 +1,7 @@
 // Cloud Backend Configuration Management
 
+export type AuthMode = "password" | "oidc";
+
 export interface CloudBackend {
   id: string;
   name: string;
@@ -7,16 +9,27 @@ export interface CloudBackend {
   region: string;
   userPoolId: string;
   userPoolClientId: string;
+  authMode?: AuthMode; // default: password (SRP)
+  cognitoDomain?: string; // required for oidc/hosted UI
+  redirectUri?: string; // required for oidc/hosted UI
+  scopes?: string[]; // optional override, default ["openid","email","profile"]
   createdAt: number;
 }
 
 const BACKENDS_STORAGE_KEY = "cw-alarms-backends";
 const ACTIVE_BACKEND_KEY = "cw-alarms-active-backend";
 
+function normalizeBackend(raw: CloudBackend): CloudBackend {
+  return {
+    ...raw,
+    authMode: raw.authMode ?? "password",
+  };
+}
+
 export function getBackends(): CloudBackend[] {
   try {
     const stored = localStorage.getItem(BACKENDS_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
+    return stored ? (JSON.parse(stored) as CloudBackend[]).map(normalizeBackend) : [];
   } catch {
     return [];
   }
@@ -32,6 +45,7 @@ export function addBackend(backend: Omit<CloudBackend, "id" | "createdAt">): Clo
     ...backend,
     id: crypto.randomUUID(),
     createdAt: Date.now(),
+    authMode: backend.authMode ?? "password",
   };
   backends.push(newBackend);
   saveBackends(backends);
@@ -48,7 +62,7 @@ export function updateBackend(id: string, updates: Partial<Omit<CloudBackend, "i
   const backends = getBackends();
   const index = backends.findIndex((b) => b.id === id);
   if (index !== -1) {
-    backends[index] = { ...backends[index], ...updates };
+    backends[index] = normalizeBackend({ ...backends[index], ...updates });
     saveBackends(backends);
   }
 }
@@ -89,6 +103,13 @@ export function initializeDefaultBackend(): void {
     const userPoolId = import.meta.env.VITE_USER_POOL_ID || import.meta.env.VITE_COGNITO_USER_POOL_ID;
     const userPoolClientId = import.meta.env.VITE_USER_POOL_CLIENT_ID || import.meta.env.VITE_COGNITO_CLIENT_ID;
     const region = import.meta.env.VITE_AWS_REGION || import.meta.env.VITE_COGNITO_REGION || "eu-west-1";
+    const authMode = (import.meta.env.VITE_AUTH_MODE as AuthMode) || "password";
+    const cognitoDomain = import.meta.env.VITE_COGNITO_DOMAIN;
+    const redirectUri = import.meta.env.VITE_COGNITO_REDIRECT_URI || import.meta.env.VITE_REDIRECT_URI;
+    const scopes =
+      typeof import.meta.env.VITE_OIDC_SCOPES === "string"
+        ? import.meta.env.VITE_OIDC_SCOPES.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined;
 
     if (apiUrl && userPoolId && userPoolClientId) {
       addBackend({
@@ -97,6 +118,10 @@ export function initializeDefaultBackend(): void {
         region,
         userPoolId,
         userPoolClientId,
+        authMode,
+        cognitoDomain,
+        redirectUri,
+        scopes,
       });
     }
   }
